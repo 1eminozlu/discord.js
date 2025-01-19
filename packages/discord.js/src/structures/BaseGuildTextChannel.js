@@ -1,13 +1,9 @@
 'use strict';
 
-const { Collection } = require('@discordjs/collection');
-const { Routes } = require('discord-api-types/v9');
-const GuildChannel = require('./GuildChannel');
-const Webhook = require('./Webhook');
-const TextBasedChannel = require('./interfaces/TextBasedChannel');
-const MessageManager = require('../managers/MessageManager');
-const ThreadManager = require('../managers/ThreadManager');
-const DataResolver = require('../util/DataResolver');
+const { GuildChannel } = require('./GuildChannel');
+const { TextBasedChannel } = require('./interfaces/TextBasedChannel');
+const { GuildMessageManager } = require('../managers/GuildMessageManager');
+const { GuildTextThreadManager } = require('../managers/GuildTextThreadManager');
 
 /**
  * Represents a text-based guild channel on Discord.
@@ -20,15 +16,15 @@ class BaseGuildTextChannel extends GuildChannel {
 
     /**
      * A manager of the messages sent to this channel
-     * @type {MessageManager}
+     * @type {GuildMessageManager}
      */
-    this.messages = new MessageManager(this);
+    this.messages = new GuildMessageManager(this);
 
     /**
      * A manager of the threads belonging to this channel
-     * @type {ThreadManager}
+     * @type {GuildTextThreadManager}
      */
-    this.threads = new ThreadManager(this);
+    this.threads = new GuildTextThreadManager(this);
 
     /**
      * If the guild considers this channel NSFW
@@ -78,6 +74,16 @@ class BaseGuildTextChannel extends GuildChannel {
       this.defaultAutoArchiveDuration = data.default_auto_archive_duration;
     }
 
+    if ('default_thread_rate_limit_per_user' in data) {
+      /**
+       * The initial rate limit per user (slowmode) to set on newly created threads in a channel.
+       * @type {?number}
+       */
+      this.defaultThreadRateLimitPerUser = data.default_thread_rate_limit_per_user;
+    } else {
+      this.defaultThreadRateLimitPerUser ??= null;
+    }
+
     if ('messages' in data) {
       for (const message of data.messages) this.messages._add(message);
     }
@@ -90,78 +96,18 @@ class BaseGuildTextChannel extends GuildChannel {
    * @returns {Promise<TextChannel>}
    */
   setDefaultAutoArchiveDuration(defaultAutoArchiveDuration, reason) {
-    return this.edit({ defaultAutoArchiveDuration }, reason);
+    return this.edit({ defaultAutoArchiveDuration, reason });
   }
 
   /**
-   * Sets whether this channel is flagged as NSFW.
-   * @param {boolean} [nsfw=true] Whether the channel should be considered NSFW
-   * @param {string} [reason] Reason for changing the channel's NSFW flag
-   * @returns {Promise<TextChannel>}
-   */
-  setNSFW(nsfw = true, reason) {
-    return this.edit({ nsfw }, reason);
-  }
-
-  /**
-   * Sets the type of this channel (only conversion between text and news is supported)
-   * @param {string} type The new channel type
+   * Sets the type of this channel.
+   * <info>Only conversion between {@link TextChannel} and {@link AnnouncementChannel} is supported.</info>
+   * @param {ChannelType.GuildText|ChannelType.GuildAnnouncement} type The new channel type
    * @param {string} [reason] Reason for changing the channel's type
    * @returns {Promise<GuildChannel>}
    */
   setType(type, reason) {
-    return this.edit({ type }, reason);
-  }
-
-  /**
-   * Fetches all webhooks for the channel.
-   * @returns {Promise<Collection<Snowflake, Webhook>>}
-   * @example
-   * // Fetch webhooks
-   * channel.fetchWebhooks()
-   *   .then(hooks => console.log(`This channel has ${hooks.size} hooks`))
-   *   .catch(console.error);
-   */
-  async fetchWebhooks() {
-    const data = await this.client.rest.get(Routes.channelWebhooks(this.id));
-    const hooks = new Collection();
-    for (const hook of data) hooks.set(hook.id, new Webhook(this.client, hook));
-    return hooks;
-  }
-
-  /**
-   * Options used to create a {@link Webhook} in a {@link TextChannel} or a {@link NewsChannel}.
-   * @typedef {Object} ChannelWebhookCreateOptions
-   * @property {?(BufferResolvable|Base64Resolvable)} [avatar] Avatar for the webhook
-   * @property {string} [reason] Reason for creating the webhook
-   */
-
-  /**
-   * Creates a webhook for the channel.
-   * @param {string} name The name of the webhook
-   * @param {ChannelWebhookCreateOptions} [options] Options for creating the webhook
-   * @returns {Promise<Webhook>} Returns the created Webhook
-   * @example
-   * // Create a webhook for the current channel
-   * channel.createWebhook('Snek', {
-   *   avatar: 'https://i.imgur.com/mI8XcpG.jpg',
-   *   reason: 'Needed a cool new Webhook'
-   * })
-   *   .then(console.log)
-   *   .catch(console.error)
-   */
-  async createWebhook(name, { avatar, reason } = {}) {
-    if (typeof avatar === 'string' && !avatar.startsWith('data:')) {
-      avatar = await DataResolver.resolveImage(avatar);
-    }
-    const data = await this.client.rest.post(Routes.channelWebhooks(this.id), {
-      body: {
-        name,
-        avatar,
-      },
-      reason,
-    });
-    return new Webhook(this.client, data);
+    return this.edit({ type, reason });
   }
 
   /**
@@ -176,17 +122,25 @@ class BaseGuildTextChannel extends GuildChannel {
    *   .catch(console.error);
    */
   setTopic(topic, reason) {
-    return this.edit({ topic }, reason);
+    return this.edit({ topic, reason });
   }
 
   /**
+   * Data that can be resolved to an Application. This can be:
+   * * An Application
+   * * An Activity with associated Application
+   * * A Snowflake
+   * @typedef {Application|Snowflake} ApplicationResolvable
+   */
+
+  /**
    * Options used to create an invite to a guild channel.
-   * @typedef {Object} CreateInviteOptions
-   * @property {boolean} [temporary=false] Whether members that joined via the invite should be automatically
+   * @typedef {Object} InviteCreateOptions
+   * @property {boolean} [temporary] Whether members that joined via the invite should be automatically
    * kicked after 24 hours if they have not yet received a role
-   * @property {number} [maxAge=86400] How long the invite should last (in seconds, 0 for forever)
-   * @property {number} [maxUses=0] Maximum number of uses
-   * @property {boolean} [unique=false] Create a unique invite, or use an existing one with similar settings
+   * @property {number} [maxAge] How long the invite should last (in seconds, 0 for forever)
+   * @property {number} [maxUses] Maximum number of uses
+   * @property {boolean} [unique] Create a unique invite, or use an existing one with similar settings
    * @property {UserResolvable} [targetUser] The user whose stream to display for this invite,
    * required if `targetType` is {@link InviteTargetType.Stream}, the user must be streaming in the channel
    * @property {ApplicationResolvable} [targetApplication] The embedded application to open for this invite,
@@ -198,7 +152,7 @@ class BaseGuildTextChannel extends GuildChannel {
 
   /**
    * Creates an invite to this guild channel.
-   * @param {CreateInviteOptions} [options={}] The options for creating the invite
+   * @param {InviteCreateOptions} [options={}] The options for creating the invite
    * @returns {Promise<Invite>}
    * @example
    * // Create an invite to a channel
@@ -231,8 +185,12 @@ class BaseGuildTextChannel extends GuildChannel {
   createMessageComponentCollector() {}
   awaitMessageComponent() {}
   bulkDelete() {}
+  fetchWebhooks() {}
+  createWebhook() {}
+  setRateLimitPerUser() {}
+  setNSFW() {}
 }
 
 TextBasedChannel.applyToClass(BaseGuildTextChannel, true);
 
-module.exports = BaseGuildTextChannel;
+exports.BaseGuildTextChannel = BaseGuildTextChannel;

@@ -1,15 +1,15 @@
 'use strict';
 
-const Base = require('./Base');
+const { Base } = require('./Base');
 const { Emoji } = require('./Emoji');
-const ActivityFlagsBitField = require('../util/ActivityFlagsBitField');
-const Util = require('../util/Util');
+const { ActivityFlagsBitField } = require('../util/ActivityFlagsBitField');
+const { flatten } = require('../util/Util');
 
 /**
  * Activity sent in a message.
  * @typedef {Object} MessageActivity
  * @property {string} [partyId] Id of the party represented in activity
- * @property {number} [type] Type of activity sent
+ * @property {MessageActivityType} type Type of activity sent
  */
 
 /**
@@ -123,39 +123,31 @@ class Presence extends Base {
       this === presence ||
       (presence &&
         this.status === presence.status &&
-        this.activities.length === presence.activities.length &&
-        this.activities.every((activity, index) => activity.equals(presence.activities[index])) &&
         this.clientStatus?.web === presence.clientStatus?.web &&
         this.clientStatus?.mobile === presence.clientStatus?.mobile &&
-        this.clientStatus?.desktop === presence.clientStatus?.desktop)
+        this.clientStatus?.desktop === presence.clientStatus?.desktop &&
+        this.activities.length === presence.activities.length &&
+        this.activities.every((activity, index) => activity.equals(presence.activities[index])))
     );
   }
 
   toJSON() {
-    return Util.flatten(this);
+    return flatten(this);
   }
 }
-
-/**
- * The platform of this activity:
- * * **`desktop`**
- * * **`samsung`** - playing on Samsung Galaxy
- * * **`xbox`** - playing on Xbox Live
- * @typedef {string} ActivityPlatform
- */
 
 /**
  * Represents an activity that is part of a user's presence.
  */
 class Activity {
   constructor(presence, data) {
-    Object.defineProperty(this, 'presence', { value: presence });
-
     /**
-     * The activity's id
-     * @type {string}
+     * The presence of the Activity
+     * @type {Presence}
+     * @readonly
+     * @name Activity#presence
      */
-    this.id = data.id;
+    Object.defineProperty(this, 'presence', { value: presence });
 
     /**
      * The activity's name
@@ -212,18 +204,6 @@ class Activity {
       : null;
 
     /**
-     * The Spotify song's id
-     * @type {?string}
-     */
-    this.syncId = data.sync_id ?? null;
-
-    /**
-     * The platform the game is being played on
-     * @type {?ActivityPlatform}
-     */
-    this.platform = data.platform ?? null;
-
-    /**
      * Represents a party of an activity
      * @typedef {Object} ActivityParty
      * @property {?string} id The party's id
@@ -235,6 +215,13 @@ class Activity {
      * @type {?ActivityParty}
      */
     this.party = data.party ?? null;
+
+    /**
+     * The sync id of the activity
+     * <info>This property is not documented by Discord and represents the track id in spotify activities.</info>
+     * @type {?string}
+     */
+    this.syncId = data.sync_id ?? null;
 
     /**
      * Assets for rich presence
@@ -255,12 +242,6 @@ class Activity {
     this.emoji = data.emoji ? new Emoji(presence.client, data.emoji) : null;
 
     /**
-     * The game's or Spotify session's id
-     * @type {?string}
-     */
-    this.sessionId = data.session_id ?? null;
-
-    /**
      * The labels of the buttons of this rich presence
      * @type {string[]}
      */
@@ -270,7 +251,7 @@ class Activity {
      * Creation date of the activity
      * @type {number}
      */
-    this.createdTimestamp = Date.parse(data.created_at);
+    this.createdTimestamp = data.created_at;
   }
 
   /**
@@ -286,7 +267,9 @@ class Activity {
         this.type === activity.type &&
         this.url === activity.url &&
         this.state === activity.state &&
-        this.details === activity.details)
+        this.details === activity.details &&
+        this.emoji?.id === activity.emoji?.id &&
+        this.emoji?.name === activity.emoji?.name)
     );
   }
 
@@ -300,7 +283,7 @@ class Activity {
   }
 
   /**
-   * When concatenated with a string, this automatically returns the activities' name instead of the Activity object.
+   * When concatenated with a string, this automatically returns the activity's name instead of the Activity object.
    * @returns {string}
    */
   toString() {
@@ -317,6 +300,12 @@ class Activity {
  */
 class RichPresenceAssets {
   constructor(activity, assets) {
+    /**
+     * The activity of the RichPresenceAssets
+     * @type {Activity}
+     * @readonly
+     * @name RichPresenceAssets#activity
+     */
     Object.defineProperty(this, 'activity', { value: activity });
 
     /**

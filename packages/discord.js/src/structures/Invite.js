@@ -1,31 +1,45 @@
 'use strict';
 
-const { RouteBases, Routes, PermissionFlagsBits } = require('discord-api-types/v9');
-const Base = require('./Base');
+const { RouteBases, Routes, PermissionFlagsBits } = require('discord-api-types/v10');
+const { Base } = require('./Base');
 const { GuildScheduledEvent } = require('./GuildScheduledEvent');
-const IntegrationApplication = require('./IntegrationApplication');
-const InviteStageInstance = require('./InviteStageInstance');
-const { Error } = require('../errors');
+const { IntegrationApplication } = require('./IntegrationApplication');
+const { DiscordjsError, ErrorCodes } = require('../errors');
 
 /**
  * Represents an invitation to a guild channel.
  * @extends {Base}
  */
 class Invite extends Base {
+  /**
+   * A regular expression that matches Discord invite links.
+   * The `code` group property is present on the `exec()` result of this expression.
+   * @type {RegExp}
+   * @memberof Invite
+   */
+  static InvitesPattern = /discord(?:(?:app)?\.com\/invite|\.gg(?:\/invite)?)\/(?<code>[\w-]{2,255})/i;
+
   constructor(client, data) {
     super(client);
+
+    /**
+     * The type of this invite
+     * @type {InviteType}
+     */
+    this.type = data.type;
+
     this._patch(data);
   }
 
   _patch(data) {
-    const InviteGuild = require('./InviteGuild');
+    const { InviteGuild } = require('./InviteGuild');
     /**
      * The guild the invite is for including welcome screen data if present
      * @type {?(Guild|InviteGuild)}
      */
     this.guild ??= null;
     if (data.guild) {
-      this.guild = this.client.guilds.resolve(data.guild.id) ?? new InviteGuild(this.client, data.guild);
+      this.guild = this.client.guilds.cache.get(data.guild.id) ?? new InviteGuild(this.client, data.guild);
     }
 
     if ('code' in data) {
@@ -151,12 +165,24 @@ class Invite extends Base {
       this.targetType ??= null;
     }
 
+    if ('channel_id' in data) {
+      /**
+       * The id of the channel this invite is for
+       * @type {?Snowflake}
+       */
+      this.channelId = data.channel_id;
+    }
+
     if ('channel' in data) {
       /**
        * The channel this invite is for
-       * @type {?Channel}
+       * @type {?BaseChannel}
        */
-      this.channel = this.client.channels._add(data.channel, this.guild, { cache: false });
+      this.channel =
+        this.client.channels._add(data.channel, this.guild, { cache: false }) ??
+        this.client.channels.resolve(this.channelId);
+
+      this.channelId ??= data.channel.id;
     }
 
     if ('created_at' in data) {
@@ -169,17 +195,10 @@ class Invite extends Base {
       this.createdTimestamp ??= null;
     }
 
-    if ('expires_at' in data) this._expiresTimestamp = Date.parse(data.expires_at);
-    else this._expiresTimestamp ??= null;
-
-    if ('stage_instance' in data) {
-      /**
-       * The stage instance data if there is a public {@link StageInstance} in the stage channel this invite is for
-       * @type {?InviteStageInstance}
-       */
-      this.stageInstance = new InviteStageInstance(this.client, data.stage_instance, this.channel.id, this.guild.id);
+    if ('expires_at' in data) {
+      this._expiresTimestamp = data.expires_at && Date.parse(data.expires_at);
     } else {
-      this.stageInstance ??= null;
+      this._expiresTimestamp ??= null;
     }
 
     if ('guild_scheduled_event' in data) {
@@ -210,10 +229,10 @@ class Invite extends Base {
   get deletable() {
     const guild = this.guild;
     if (!guild || !this.client.guilds.cache.has(guild.id)) return false;
-    if (!guild.me) throw new Error('GUILD_UNCACHED_ME');
+    if (!guild.members.me) throw new DiscordjsError(ErrorCodes.GuildUncachedMe);
     return Boolean(
       this.channel?.permissionsFor(this.client.user).has(PermissionFlagsBits.ManageChannels, false) ||
-        guild.me.permissions.has(PermissionFlagsBits.ManageGuild),
+        guild.members.me.permissions.has(PermissionFlagsBits.ManageGuild),
     );
   }
 
@@ -284,6 +303,7 @@ class Invite extends Base {
       presenceCount: false,
       memberCount: false,
       uses: false,
+      channel: 'channelId',
       inviter: 'inviterId',
       guild: 'guildId',
     });
@@ -294,10 +314,4 @@ class Invite extends Base {
   }
 }
 
-/**
- * Regular expression that globally matches Discord invite links
- * @type {RegExp}
- */
-Invite.INVITES_PATTERN = /discord(?:(?:app)?\.com\/invite|\.gg(?:\/invite)?)\/([\w-]{2,255})/gi;
-
-module.exports = Invite;
+exports.Invite = Invite;

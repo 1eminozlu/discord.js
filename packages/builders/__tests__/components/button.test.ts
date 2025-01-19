@@ -1,113 +1,66 @@
 import {
-	APIButtonComponentWithCustomId,
-	APIButtonComponentWithURL,
 	ButtonStyle,
 	ComponentType,
-} from 'discord-api-types/v9';
-import { buttonLabelValidator, buttonStyleValidator } from '../../src/components/Assertions';
-import { ButtonComponent } from '../../src/components/Button';
-
-const buttonComponent = () => new ButtonComponent();
+	type APIButtonComponentWithCustomId,
+	type APIButtonComponentWithURL,
+} from 'discord-api-types/v10';
+import { describe, test, expect } from 'vitest';
+import { PrimaryButtonBuilder, PremiumButtonBuilder, LinkButtonBuilder } from '../../src/index.js';
 
 const longStr =
 	'looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong';
 
 describe('Button Components', () => {
 	describe('Assertion Tests', () => {
-		test('GIVEN valid label THEN validator does not throw', () => {
-			expect(() => buttonLabelValidator.parse('foobar')).not.toThrowError();
-		});
-
-		test('GIVEN invalid label THEN validator does throw', () => {
-			expect(() => buttonLabelValidator.parse(null)).toThrowError();
-			expect(() => buttonLabelValidator.parse('')).toThrowError();
-
-			expect(() => buttonLabelValidator.parse(longStr)).toThrowError();
-		});
-
-		test('GIVEN valid style THEN validator does not throw', () => {
-			expect(() => buttonStyleValidator.parse(3)).not.toThrowError();
-			expect(() => buttonStyleValidator.parse(ButtonStyle.Secondary)).not.toThrowError();
-		});
-
-		test('GIVEN invalid style THEN validator does not throw', () => {
-			expect(() => buttonStyleValidator.parse(7)).toThrowError();
-		});
-
 		test('GIVEN valid fields THEN builder does not throw', () => {
-			expect(() =>
-				buttonComponent().setCustomId('custom').setStyle(ButtonStyle.Primary).setLabel('test'),
-			).not.toThrowError();
+			expect(() => new PrimaryButtonBuilder().setCustomId('custom').setLabel('test')).not.toThrowError();
 
 			expect(() => {
-				const button = buttonComponent()
+				const button = new PrimaryButtonBuilder()
 					.setCustomId('custom')
-					.setStyle(ButtonStyle.Primary)
+					.setLabel('test')
 					.setDisabled(true)
 					.setEmoji({ name: 'test' });
 
 				button.toJSON();
 			}).not.toThrowError();
 
-			expect(() => buttonComponent().setURL('https://google.com')).not.toThrowError();
+			expect(() => {
+				const button = new PremiumButtonBuilder().setSKUId('123456789012345678');
+				button.toJSON();
+			}).not.toThrowError();
+
+			expect(() => new LinkButtonBuilder().setURL('https://google.com')).not.toThrowError();
 		});
 
 		test('GIVEN invalid fields THEN build does throw', () => {
 			expect(() => {
-				buttonComponent().setCustomId(longStr);
+				new PrimaryButtonBuilder().setCustomId(longStr).toJSON();
 			}).toThrowError();
 
 			expect(() => {
-				const button = buttonComponent()
-					.setCustomId('custom')
-					.setStyle(ButtonStyle.Primary)
-					.setDisabled(true)
-					.setLabel('test')
-					.setURL('https://google.com')
-					.setEmoji({ name: 'test' });
-
+				// @ts-expect-error: Invalid emoji
+				const button = new PrimaryButtonBuilder().setEmoji('test');
 				button.toJSON();
 			}).toThrowError();
 
 			expect(() => {
-				// @ts-expect-error
-				const button = buttonComponent().setEmoji('test');
+				const button = new PrimaryButtonBuilder();
 				button.toJSON();
 			}).toThrowError();
 
 			expect(() => {
-				const button = buttonComponent().setStyle(ButtonStyle.Primary);
+				const button = new PrimaryButtonBuilder().setCustomId('test');
 				button.toJSON();
 			}).toThrowError();
 
-			expect(() => {
-				const button = buttonComponent().setStyle(ButtonStyle.Primary).setCustomId('test');
-				button.toJSON();
-			}).toThrowError();
-
-			expect(() => {
-				const button = buttonComponent().setStyle(ButtonStyle.Link);
-				button.toJSON();
-			}).toThrowError();
-
-			expect(() => {
-				const button = buttonComponent().setStyle(ButtonStyle.Primary).setLabel('test').setURL('https://google.com');
-				button.toJSON();
-			}).toThrowError();
-
-			expect(() => {
-				const button = buttonComponent().setStyle(ButtonStyle.Link).setLabel('test');
-				button.toJSON();
-			}).toThrowError();
-
-			expect(() => buttonComponent().setStyle(24)).toThrowError();
-			expect(() => buttonComponent().setLabel(longStr)).toThrowError();
-			// @ts-expect-error
-			expect(() => buttonComponent().setDisabled(0)).toThrowError();
-			// @ts-expect-error
-			expect(() => buttonComponent().setEmoji('foo')).toThrowError();
-
-			expect(() => buttonComponent().setURL('foobar')).toThrowError();
+			// @ts-expect-error: Invalid style
+			expect(() => new PrimaryButtonBuilder().setCustomId('hi').setStyle(24).toJSON()).toThrowError();
+			expect(() => new PrimaryButtonBuilder().setCustomId('hi').setLabel(longStr).toJSON()).toThrowError();
+			// @ts-expect-error: Invalid parameter for disabled
+			expect(() => new PrimaryButtonBuilder().setCustomId('hi').setDisabled(0).toJSON()).toThrowError();
+			// @ts-expect-error: Invalid emoji
+			expect(() => new PrimaryButtonBuilder().setCustomId('hi').setEmoji('foo').toJSON()).toThrowError();
 		});
 
 		test('GiVEN valid input THEN valid JSON outputs are given', () => {
@@ -119,13 +72,12 @@ describe('Button Components', () => {
 				disabled: true,
 			};
 
-			expect(new ButtonComponent(interactionData).toJSON()).toEqual(interactionData);
+			expect(new PrimaryButtonBuilder(interactionData).toJSON()).toEqual(interactionData);
 
 			expect(
-				buttonComponent()
+				new PrimaryButtonBuilder()
 					.setCustomId(interactionData.custom_id)
-					.setLabel(interactionData.label)
-					.setStyle(interactionData.style)
+					.setLabel(interactionData.label!)
 					.setDisabled(interactionData.disabled)
 					.toJSON(),
 			).toEqual(interactionData);
@@ -138,9 +90,7 @@ describe('Button Components', () => {
 				url: 'https://google.com',
 			};
 
-			expect(new ButtonComponent(linkData).toJSON()).toEqual(linkData);
-
-			expect(buttonComponent().setLabel(linkData.label).setDisabled(true).setURL(linkData.url));
+			expect(new LinkButtonBuilder(linkData).toJSON()).toEqual(linkData);
 		});
 	});
 });

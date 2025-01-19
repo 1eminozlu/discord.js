@@ -1,8 +1,8 @@
 # Packages
-node_modules/
+node_modules
 
 # Log files
-logs/
+logs
 *.log
 npm-debug.log*
 
@@ -11,13 +11,18 @@ pids
 *.pid
 *.seed
 
+# Env
+.env
+
 # Dist
-dist/
-typings/
+dist
+dist-docs
+
+# Docs
 docs/**/*
-!docs/index.yml
 !docs/README.md
 
 # Miscellaneous
-.tmp/
-coverage/
+.turbo
+.tmp
+coverage

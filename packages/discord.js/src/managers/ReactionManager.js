@@ -1,8 +1,8 @@
 'use strict';
 
-const { Routes } = require('discord-api-types/v9');
-const CachedManager = require('./CachedManager');
-const MessageReaction = require('../structures/MessageReaction');
+const { Routes } = require('discord-api-types/v10');
+const { CachedManager } = require('./CachedManager');
+const { MessageReaction } = require('../structures/MessageReaction');
 
 /**
  * Manages API methods for reactions and holds their cache.
@@ -33,6 +33,7 @@ class ReactionManager extends CachedManager {
    * Data that can be resolved to a MessageReaction object. This can be:
    * * A MessageReaction
    * * A Snowflake
+   * * The Unicode representation of an emoji
    * @typedef {MessageReaction|Snowflake} MessageReactionResolvable
    */
 
@@ -64,4 +65,4 @@ class ReactionManager extends CachedManager {
   }
 }
 
-module.exports = ReactionManager;
+exports.ReactionManager = ReactionManager;

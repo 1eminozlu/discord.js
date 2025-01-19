@@ -1,15 +1,17 @@
 'use strict';
 
-const Action = require('./Action');
-const { Events } = require('../../util/Constants');
+const { Action } = require('./Action');
+const { Events } = require('../../util/Events');
 
 class MessageDeleteAction extends Action {
   handle(data) {
     const client = this.client;
-    const channel = this.getChannel(data);
+    const channel = this.getChannel({ id: data.channel_id, ...('guild_id' in data && { guild_id: data.guild_id }) });
     let message;
     if (channel) {
       if (!channel.isTextBased()) return {};
+
+      if (channel.isThread()) channel.messageCount--;
 
       message = this.getMessage(data, channel);
       if (message) {
@@ -19,7 +21,7 @@ class MessageDeleteAction extends Action {
          * @event Client#messageDelete
          * @param {Message} message The deleted message
          */
-        client.emit(Events.MESSAGE_DELETE, message);
+        client.emit(Events.MessageDelete, message);
       }
     }
 
@@ -27,4 +29,4 @@ class MessageDeleteAction extends Action {
   }
 }
 
-module.exports = MessageDeleteAction;
+exports.MessageDeleteAction = MessageDeleteAction;

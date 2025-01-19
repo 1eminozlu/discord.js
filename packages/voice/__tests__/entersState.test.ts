@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import EventEmitter from 'node:events';
-import { VoiceConnection, VoiceConnectionStatus } from '../src/VoiceConnection';
+import { EventEmitter } from 'node:events';
+import process from 'node:process';
+import { describe, test, expect, vitest, beforeEach } from 'vitest';
+import { VoiceConnectionStatus, type VoiceConnection } from '../src/VoiceConnection';
 import { entersState } from '../src/util/entersState';
 
 function createFakeVoiceConnection(status = VoiceConnectionStatus.Signalling) {
@@ -11,34 +11,32 @@ function createFakeVoiceConnection(status = VoiceConnectionStatus.Signalling) {
 }
 
 beforeEach(() => {
-	jest.useFakeTimers();
+	vitest.useFakeTimers();
 });
 
 describe('entersState', () => {
 	test('Returns the target once the state has been entered before timeout', async () => {
-		jest.useRealTimers();
+		vitest.useRealTimers();
 		const vc = createFakeVoiceConnection();
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
 		process.nextTick(() => vc.emit(VoiceConnectionStatus.Ready, null as any, null as any));
-		const result = await entersState(vc, VoiceConnectionStatus.Ready, 1000);
-		expect(result).toBe(vc);
+		const result = await entersState(vc, VoiceConnectionStatus.Ready, 1_000);
+		expect(result).toEqual(vc);
 	});
 
 	test('Rejects once the timeout is exceeded', async () => {
 		const vc = createFakeVoiceConnection();
-		const promise = entersState(vc, VoiceConnectionStatus.Ready, 1000);
-		jest.runAllTimers();
+		const promise = entersState(vc, VoiceConnectionStatus.Ready, 1_000);
+		vitest.runAllTimers();
 		await expect(promise).rejects.toThrowError();
 	});
 
 	test('Returns the target once the state has been entered before signal is aborted', async () => {
-		jest.useRealTimers();
+		vitest.useRealTimers();
 		const vc = createFakeVoiceConnection();
 		const ac = new AbortController();
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
 		process.nextTick(() => vc.emit(VoiceConnectionStatus.Ready, null as any, null as any));
 		const result = await entersState(vc, VoiceConnectionStatus.Ready, ac.signal);
-		expect(result).toBe(vc);
+		expect(result).toEqual(vc);
 	});
 
 	test('Rejects once the signal is aborted', async () => {
@@ -51,6 +49,6 @@ describe('entersState', () => {
 
 	test('Resolves immediately when target already in desired state', async () => {
 		const vc = createFakeVoiceConnection();
-		await expect(entersState(vc, VoiceConnectionStatus.Signalling, 1000)).resolves.toBe(vc);
+		await expect(entersState(vc, VoiceConnectionStatus.Signalling, 1_000)).resolves.toEqual(vc);
 	});
 });

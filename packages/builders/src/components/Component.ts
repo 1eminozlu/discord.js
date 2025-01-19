@@ -1,15 +1,23 @@
-import type { APIMessageComponent, ComponentType } from 'discord-api-types/v9';
+import type { JSONEncodable } from '@discordjs/util';
+import type { APIActionRowComponent, APIActionRowComponentTypes } from 'discord-api-types/v10';
 
 /**
- * Represents a discord component
+ * Any action row component data represented as an object.
  */
-export interface Component {
+export type AnyAPIActionRowComponent = APIActionRowComponent<APIActionRowComponentTypes> | APIActionRowComponentTypes;
+
+/**
+ * The base component builder that contains common symbols for all sorts of components.
+ *
+ * @typeParam Component - The type of API data that is stored within the builder
+ */
+export abstract class ComponentBuilder<Component extends AnyAPIActionRowComponent> implements JSONEncodable<Component> {
 	/**
-	 * The type of this component
+	 * Serializes this builder to API-compatible JSON data.
+	 *
+	 * Note that by disabling validation, there is no guarantee that the resulting object will be valid.
+	 *
+	 * @param validationOverride - Force validation to run/not run regardless of your global preference
 	 */
-	readonly type: ComponentType;
-	/**
-	 * Converts this component to an API-compatible JSON object
-	 */
-	toJSON: () => APIMessageComponent;
+	public abstract toJSON(validationOverride?: boolean): Component;
 }

@@ -1,9 +1,9 @@
 'use strict';
 
 const { DiscordSnowflake } = require('@sapphire/snowflake');
-const { GuildScheduledEventStatus, GuildScheduledEventEntityType, RouteBases } = require('discord-api-types/v9');
-const Base = require('./Base');
-const { Error } = require('../errors');
+const { GuildScheduledEventStatus, GuildScheduledEventEntityType, RouteBases } = require('discord-api-types/v10');
+const { Base } = require('./Base');
+const { DiscordjsError, ErrorCodes } = require('../errors');
 
 /**
  * Represents a scheduled event in a {@link Guild}.
@@ -50,11 +50,16 @@ class GuildScheduledEvent extends Base {
       this.creatorId ??= null;
     }
 
-    /**
-     * The name of the guild scheduled event
-     * @type {string}
-     */
-    this.name = data.name;
+    if ('name' in data) {
+      /**
+       * The name of the guild scheduled event
+       * @type {?string}
+       */
+      this.name = data.name;
+    } else {
+      // Only if partial.
+      this.name ??= null;
+    }
 
     if ('description' in data) {
       /**
@@ -66,37 +71,59 @@ class GuildScheduledEvent extends Base {
       this.description ??= null;
     }
 
-    /**
-     * The timestamp the guild scheduled event will start at
-     * <info>This can be potentially `null` only when it's an {@link AuditLogEntryTarget}</info>
-     * @type {?number}
-     */
-    this.scheduledStartTimestamp = data.scheduled_start_time ? Date.parse(data.scheduled_start_time) : null;
+    if ('scheduled_start_time' in data) {
+      /**
+       * The timestamp the guild scheduled event will start at
+       * @type {?number}
+       */
+      this.scheduledStartTimestamp = Date.parse(data.scheduled_start_time);
+    } else {
+      this.scheduledStartTimestamp ??= null;
+    }
 
-    /**
-     * The timestamp the guild scheduled event will end at,
-     * or `null` if the event does not have a scheduled time to end
-     * @type {?number}
-     */
-    this.scheduledEndTimestamp = data.scheduled_end_time ? Date.parse(data.scheduled_end_time) : null;
+    if ('scheduled_end_time' in data) {
+      /**
+       * The timestamp the guild scheduled event will end at
+       * or `null` if the event does not have a scheduled time to end
+       * @type {?number}
+       */
+      this.scheduledEndTimestamp = data.scheduled_end_time ? Date.parse(data.scheduled_end_time) : null;
+    } else {
+      this.scheduledEndTimestamp ??= null;
+    }
 
-    /**
-     * The privacy level of the guild scheduled event
-     * @type {GuildScheduledEventPrivacyLevel}
-     */
-    this.privacyLevel = data.privacy_level;
+    if ('privacy_level' in data) {
+      /**
+       * The privacy level of the guild scheduled event
+       * @type {?GuildScheduledEventPrivacyLevel}
+       */
+      this.privacyLevel = data.privacy_level;
+    } else {
+      // Only if partial.
+      this.privacyLevel ??= null;
+    }
 
-    /**
-     * The status of the guild scheduled event
-     * @type {GuildScheduledEventStatus}
-     */
-    this.status = data.status;
+    if ('status' in data) {
+      /**
+       * The status of the guild scheduled event
+       * @type {?GuildScheduledEventStatus}
+       */
+      this.status = data.status;
+    } else {
+      // Only if partial.
+      this.status ??= null;
+    }
 
-    /**
-     * The type of hosting entity associated with the scheduled event
-     * @type {GuildScheduledEventEntityType}
-     */
-    this.entityType = data.entity_type;
+    if ('entity_type' in data) {
+      /**
+       * The type of hosting entity associated with the scheduled event
+       * @type {?GuildScheduledEventEntityType}
+       */
+      this.entityType = data.entity_type;
+    } else {
+      // Only if partial.
+      this.entityType ??= null;
+    }
 
     if ('entity_id' in data) {
       /**
@@ -153,11 +180,74 @@ class GuildScheduledEvent extends Base {
       this.entityMetadata ??= null;
     }
 
+    if ('image' in data) {
+      /**
+       * The cover image hash for this scheduled event
+       * @type {?string}
+       */
+      this.image = data.image;
+    } else {
+      this.image ??= null;
+    }
+
     /**
-     * The cover image hash for this scheduled event
-     * @type {?string}
+     * Represents the recurrence rule for a {@link GuildScheduledEvent}.
+     * @typedef {Object} GuildScheduledEventRecurrenceRule
+     * @property {number} startTimestamp The timestamp the recurrence rule interval starts at
+     * @property {Date} startAt The time the recurrence rule interval starts at
+     * @property {?number} endTimestamp The timestamp the recurrence rule interval ends at
+     * @property {?Date} endAt The time the recurrence rule interval ends at
+     * @property {GuildScheduledEventRecurrenceRuleFrequency} frequency How often the event occurs
+     * @property {number} interval The spacing between the events
+     * @property {?GuildScheduledEventRecurrenceRuleWeekday[]} byWeekday The days within a week to recur on
+     * @property {?GuildScheduledEventRecurrenceRuleNWeekday[]} byNWeekday The days within a week to recur on
+     * @property {?GuildScheduledEventRecurrenceRuleMonth[]} byMonth The months to recur on
+     * @property {?number[]} byMonthDay The days within a month to recur on
+     * @property {?number[]} byYearDay The days within a year to recur on
+     * @property {?number} count The total amount of times the event is allowed to recur before stopping
      */
-    this.image = data.image ?? null;
+
+    /**
+     * @typedef {Object} GuildScheduledEventRecurrenceRuleNWeekday
+     * @property {number} n The week to recur on
+     * @property {GuildScheduledEventRecurrenceRuleWeekday} day The day within the week to recur on
+     */
+
+    if ('recurrence_rule' in data) {
+      /**
+       * The recurrence rule for this scheduled event
+       * @type {?GuildScheduledEventRecurrenceRule}
+       */
+      this.recurrenceRule = data.recurrence_rule && {
+        startTimestamp: Date.parse(data.recurrence_rule.start),
+        get startAt() {
+          return new Date(this.startTimestamp);
+        },
+        endTimestamp: data.recurrence_rule.end && Date.parse(data.recurrence_rule.end),
+        get endAt() {
+          return this.endTimestamp && new Date(this.endTimestamp);
+        },
+        frequency: data.recurrence_rule.frequency,
+        interval: data.recurrence_rule.interval,
+        byWeekday: data.recurrence_rule.by_weekday,
+        byNWeekday: data.recurrence_rule.by_n_weekday,
+        byMonth: data.recurrence_rule.by_month,
+        byMonthDay: data.recurrence_rule.by_month_day,
+        byYearDay: data.recurrence_rule.by_year_day,
+        count: data.recurrence_rule.count,
+      };
+    } else {
+      this.recurrenceRule ??= null;
+    }
+  }
+
+  /**
+   * Whether this guild scheduled event is partial.
+   * @type {boolean}
+   * @readonly
+   */
+  get partial() {
+    return this.name === null;
   }
 
   /**
@@ -189,11 +279,12 @@ class GuildScheduledEvent extends Base {
 
   /**
    * The time the guild scheduled event will start at
-   * @type {Date}
+   * <info>This can be potentially `null` only when it's an {@link GuildAuditLogsEntry#target}</info>
+   * @type {?Date}
    * @readonly
    */
   get scheduledStartAt() {
-    return new Date(this.scheduledStartTimestamp);
+    return this.scheduledStartTimestamp && new Date(this.scheduledStartTimestamp);
   }
 
   /**
@@ -235,7 +326,7 @@ class GuildScheduledEvent extends Base {
 
   /**
    * Options used to create an invite URL to a {@link GuildScheduledEvent}
-   * @typedef {CreateInviteOptions} CreateGuildScheduledEventInviteURLOptions
+   * @typedef {InviteCreateOptions} GuildScheduledEventInviteURLCreateOptions
    * @property {GuildInvitableChannelResolvable} [channel] The channel to create the invite in.
    * <warn>This is required when the `entityType` of `GuildScheduledEvent` is
    * {@link GuildScheduledEventEntityType.External}, gets ignored otherwise</warn>
@@ -243,15 +334,15 @@ class GuildScheduledEvent extends Base {
 
   /**
    * Creates an invite URL to this guild scheduled event.
-   * @param {CreateGuildScheduledEventInviteURLOptions} [options] The options to create the invite
+   * @param {GuildScheduledEventInviteURLCreateOptions} [options] The options to create the invite
    * @returns {Promise<string>}
    */
   async createInviteURL(options) {
     let channelId = this.channelId;
     if (this.entityType === GuildScheduledEventEntityType.External) {
-      if (!options?.channel) throw new Error('INVITE_OPTIONS_MISSING_CHANNEL');
+      if (!options?.channel) throw new DiscordjsError(ErrorCodes.InviteOptionsMissingChannel);
       channelId = this.guild.channels.resolveId(options.channel);
-      if (!channelId) throw new Error('GUILD_CHANNEL_RESOLVE');
+      if (!channelId) throw new DiscordjsError(ErrorCodes.GuildChannelResolve);
     }
     const invite = await this.guild.invites.create(channelId, options);
     return `${RouteBases.invite}/${invite.code}?event=${this.id}`;
@@ -269,6 +360,15 @@ class GuildScheduledEvent extends Base {
    */
   edit(options) {
     return this.guild.scheduledEvents.edit(this.id, options);
+  }
+
+  /**
+   * Fetches this guild scheduled event.
+   * @param {boolean} [force=true] Whether to skip the cache check and request the API
+   * @returns {Promise<GuildScheduledEvent>}
+   */
+  fetch(force = true) {
+    return this.guild.scheduledEvents.fetch({ guildScheduledEvent: this.id, force });
   }
 
   /**
@@ -350,7 +450,7 @@ class GuildScheduledEvent extends Base {
    * Sets the new status of the guild scheduled event.
    * <info>If you're working with TypeScript, use this method in conjunction with status type-guards
    * like {@link GuildScheduledEvent#isScheduled} to get only valid status as suggestion</info>
-   * @param {GuildScheduledEventStatus|number} status The status of the guild scheduled event
+   * @param {GuildScheduledEventStatus} status The status of the guild scheduled event
    * @param {string} [reason] The reason for changing the status
    * @returns {Promise<GuildScheduledEvent>}
    * @example

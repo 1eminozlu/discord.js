@@ -1,16 +1,18 @@
 'use strict';
 
-const { ChannelType } = require('discord-api-types/v9');
-const { Channel } = require('./Channel');
-const TextBasedChannel = require('./interfaces/TextBasedChannel');
-const MessageManager = require('../managers/MessageManager');
+const { userMention } = require('@discordjs/formatters');
+const { ChannelType } = require('discord-api-types/v10');
+const { BaseChannel } = require('./BaseChannel');
+const { TextBasedChannel } = require('./interfaces/TextBasedChannel');
+const { DMMessageManager } = require('../managers/DMMessageManager');
+const { Partials } = require('../util/Partials');
 
 /**
  * Represents a direct message channel between two users.
- * @extends {Channel}
+ * @extends {BaseChannel}
  * @implements {TextBasedChannel}
  */
-class DMChannel extends Channel {
+class DMChannel extends BaseChannel {
   constructor(client, data) {
     super(client, data);
 
@@ -19,20 +21,26 @@ class DMChannel extends Channel {
 
     /**
      * A manager of the messages belonging to this channel
-     * @type {MessageManager}
+     * @type {DMMessageManager}
      */
-    this.messages = new MessageManager(this);
+    this.messages = new DMMessageManager(this);
   }
 
   _patch(data) {
     super._patch(data);
 
     if (data.recipients) {
+      const recipient = data.recipients[0];
+
       /**
-       * The recipient on the other end of the DM
-       * @type {User}
+       * The recipient's id
+       * @type {Snowflake}
        */
-      this.recipient = this.client.users._add(data.recipients[0]);
+      this.recipientId = recipient.id;
+
+      if ('username' in recipient || this.client.options.partials.includes(Partials.User)) {
+        this.client.users._add(recipient);
+      }
     }
 
     if ('last_message_id' in data) {
@@ -60,7 +68,16 @@ class DMChannel extends Channel {
    * @readonly
    */
   get partial() {
-    return typeof this.lastMessageId === 'undefined';
+    return this.lastMessageId === undefined;
+  }
+
+  /**
+   * The recipient on the other end of the DM
+   * @type {?User}
+   * @readonly
+   */
+  get recipient() {
+    return this.client.users.resolve(this.recipientId);
   }
 
   /**
@@ -69,7 +86,7 @@ class DMChannel extends Channel {
    * @returns {Promise<DMChannel>}
    */
   fetch(force = true) {
-    return this.recipient.createDM(force);
+    return this.client.users.createDM(this.recipientId, { force });
   }
 
   /**
@@ -81,7 +98,7 @@ class DMChannel extends Channel {
    * console.log(`Hello from ${channel}!`);
    */
   toString() {
-    return this.recipient.toString();
+    return userMention(this.recipientId);
   }
 
   // These are here only for documentation purposes - they are implemented by TextBasedChannel
@@ -95,8 +112,18 @@ class DMChannel extends Channel {
   createMessageComponentCollector() {}
   awaitMessageComponent() {}
   // Doesn't work on DM channels; bulkDelete() {}
+  // Doesn't work on DM channels; fetchWebhooks() {}
+  // Doesn't work on DM channels; createWebhook() {}
+  // Doesn't work on DM channels; setRateLimitPerUser() {}
+  // Doesn't work on DM channels; setNSFW() {}
 }
 
-TextBasedChannel.applyToClass(DMChannel, true, ['bulkDelete']);
+TextBasedChannel.applyToClass(DMChannel, true, [
+  'bulkDelete',
+  'fetchWebhooks',
+  'createWebhook',
+  'setRateLimitPerUser',
+  'setNSFW',
+]);
 
-module.exports = DMChannel;
+exports.DMChannel = DMChannel;

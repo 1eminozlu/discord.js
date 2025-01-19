@@ -18,13 +18,10 @@ function findPackageJSON(
 	if (depth === 0) return undefined;
 	const attemptedPath = resolve(dir, './package.json');
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 		const pkg = require(attemptedPath);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		if (pkg.name !== packageName) throw new Error('package.json does not match');
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-return
 		return pkg;
-	} catch (err) {
+	} catch {
 		return findPackageJSON(resolve(dir, '..'), packageName, depth - 1);
 	}
 }
@@ -36,14 +33,13 @@ function findPackageJSON(
  */
 function version(name: string): string {
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-		const pkg =
-			name === '@discordjs/voice'
-				? require('../../package.json')
-				: findPackageJSON(dirname(require.resolve(name)), name, 3);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
+		if (name === '@discordjs/voice') {
+			return '[VI]{{inject}}[/VI]';
+		}
+
+		const pkg = findPackageJSON(dirname(require.resolve(name)), name, 3);
 		return pkg?.version ?? 'not found';
-	} catch (err) {
+	} catch {
 		return 'not found';
 	}
 }
@@ -69,9 +65,11 @@ export function generateDependencyReport() {
 
 	// encryption
 	report.push('Encryption Libraries');
+	addVersion('sodium-native');
 	addVersion('sodium');
 	addVersion('libsodium-wrappers');
-	addVersion('tweetnacl');
+	addVersion('@stablelib/xchacha20poly1305');
+	addVersion('@noble/ciphers');
 	report.push('');
 
 	// ffmpeg
@@ -80,7 +78,7 @@ export function generateDependencyReport() {
 		const info = prism.FFmpeg.getInfo();
 		report.push(`- version: ${info.version}`);
 		report.push(`- libopus: ${info.output.includes('--enable-libopus') ? 'yes' : 'no'}`);
-	} catch (err) {
+	} catch {
 		report.push('- not found');
 	}
 

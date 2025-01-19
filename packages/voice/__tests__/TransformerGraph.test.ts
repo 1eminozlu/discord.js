@@ -1,4 +1,6 @@
-import { Edge, findPipeline, StreamType, TransformerType } from '../src/audio/TransformerGraph';
+// @ts-nocheck
+import { describe, test, expect } from 'vitest';
+import { findPipeline, StreamType, TransformerType, type Edge } from '../src/audio/TransformerGraph';
 
 const noConstraint = () => true;
 
@@ -12,6 +14,7 @@ function reducePath(pipeline: Edge[]) {
 	for (const edge of pipeline.slice(1)) {
 		streams.push(edge.from.type);
 	}
+
 	streams.push(pipeline[pipeline.length - 1].to.type);
 	return streams;
 }
@@ -26,9 +29,9 @@ describe('findPipeline (no constraints)', () => {
 			const pipeline = findPipeline(type, noConstraint);
 			const path = reducePath(pipeline);
 			expect(path.length).toBeGreaterThanOrEqual(2);
-			expect(path[0]).toBe(type);
-			expect(path.pop()).toBe(StreamType.Opus);
-			expect(pipeline.some(isVolume)).toBe(false);
+			expect(path[0]).toEqual(type);
+			expect(path.pop()).toEqual(StreamType.Opus);
+			expect(pipeline.some(isVolume)).toEqual(false);
 		},
 	);
 
@@ -42,8 +45,8 @@ describe('findPipeline (volume constraint)', () => {
 		const pipeline = findPipeline(type, containsVolume);
 		const path = reducePath(pipeline);
 		expect(path.length).toBeGreaterThanOrEqual(2);
-		expect(path[0]).toBe(type);
-		expect(path.pop()).toBe(StreamType.Opus);
-		expect(pipeline.some(isVolume)).toBe(true);
+		expect(path[0]).toEqual(type);
+		expect(path.pop()).toEqual(StreamType.Opus);
+		expect(pipeline.some(isVolume)).toEqual(true);
 	});
 });

@@ -1,14 +1,14 @@
 'use strict';
 
-const Base = require('./Base');
-const ThreadMemberFlagsBitField = require('../util/ThreadMemberFlagsBitField');
+const { Base } = require('./Base');
+const { ThreadMemberFlagsBitField } = require('../util/ThreadMemberFlagsBitField');
 
 /**
  * Represents a Member for a Thread.
  * @extends {Base}
  */
 class ThreadMember extends Base {
-  constructor(thread, data) {
+  constructor(thread, data, extra = {}) {
     super(thread.client);
 
     /**
@@ -24,24 +24,43 @@ class ThreadMember extends Base {
     this.joinedTimestamp = null;
 
     /**
+     * The flags for this thread member. This will be `null` if partial.
+     * @type {?ThreadMemberFlagsBitField}
+     */
+    this.flags = null;
+
+    /**
      * The id of the thread member
      * @type {Snowflake}
      */
     this.id = data.user_id;
 
-    this._patch(data);
+    this._patch(data, extra);
   }
 
-  _patch(data) {
+  _patch(data, extra = {}) {
     if ('join_timestamp' in data) this.joinedTimestamp = Date.parse(data.join_timestamp);
+    if ('flags' in data) this.flags = new ThreadMemberFlagsBitField(data.flags).freeze();
 
-    if ('flags' in data) {
+    if ('member' in data) {
       /**
-       * The flags for this thread member
-       * @type {ThreadMemberFlagsBitField}
+       * The guild member associated with this thread member.
+       * @type {?GuildMember}
+       * @private
        */
-      this.flags = new ThreadMemberFlagsBitField(data.flags).freeze();
+      this.member = this.thread.guild.members._add(data.member, extra.cache);
+    } else {
+      this.member ??= null;
     }
+  }
+
+  /**
+   * Whether this thread member is a partial
+   * @type {boolean}
+   * @readonly
+   */
+  get partial() {
+    return this.flags === null;
   }
 
   /**
@@ -50,7 +69,7 @@ class ThreadMember extends Base {
    * @readonly
    */
   get guildMember() {
-    return this.thread.guild.members.resolve(this.id);
+    return this.member ?? this.thread.guild.members.cache.get(this.id) ?? null;
   }
 
   /**
@@ -68,7 +87,7 @@ class ThreadMember extends Base {
    * @readonly
    */
   get user() {
-    return this.client.users.resolve(this.id);
+    return this.client.users.cache.get(this.id) ?? null;
   }
 
   /**
@@ -82,13 +101,12 @@ class ThreadMember extends Base {
 
   /**
    * Removes this member from the thread.
-   * @param {string} [reason] Reason for removing the member
-   * @returns {ThreadMember}
+   * @returns {Promise<ThreadMember>}
    */
-  async remove(reason) {
-    await this.thread.members.remove(this.id, reason);
+  async remove() {
+    await this.thread.members.remove(this.id);
     return this;
   }
 }
 
-module.exports = ThreadMember;
+exports.ThreadMember = ThreadMember;

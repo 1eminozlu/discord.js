@@ -1,17 +1,17 @@
 'use strict';
 
-const { Collection } = require('@discordjs/collection');
-const Interaction = require('./Interaction');
-const InteractionWebhook = require('./InteractionWebhook');
-const InteractionResponses = require('./interfaces/InteractionResponses');
+const { Attachment } = require('./Attachment');
+const { BaseInteraction } = require('./BaseInteraction');
+const { InteractionWebhook } = require('./InteractionWebhook');
+const { InteractionResponses } = require('./interfaces/InteractionResponses');
 
 /**
  * Represents a command interaction.
- * @extends {Interaction}
+ * @extends {BaseInteraction}
  * @implements {InteractionResponses}
  * @abstract
  */
-class CommandInteraction extends Interaction {
+class CommandInteraction extends BaseInteraction {
   constructor(client, data) {
     super(client, data);
 
@@ -38,6 +38,12 @@ class CommandInteraction extends Interaction {
      * @type {ApplicationCommandType}
      */
     this.commandType = data.data.type;
+
+    /**
+     * The id of the guild the invoked application command is registered to
+     * @type {?Snowflake}
+     */
+    this.commandGuildId = data.data.guild_id ?? null;
 
     /**
      * Whether the reply to this interaction has been deferred
@@ -79,64 +85,19 @@ class CommandInteraction extends Interaction {
    * @property {Collection<Snowflake, User>} [users] The resolved users
    * @property {Collection<Snowflake, GuildMember|APIGuildMember>} [members] The resolved guild members
    * @property {Collection<Snowflake, Role|APIRole>} [roles] The resolved roles
-   * @property {Collection<Snowflake, Channel|APIChannel>} [channels] The resolved channels
+   * @property {Collection<Snowflake, BaseChannel|APIChannel>} [channels] The resolved channels
    * @property {Collection<Snowflake, Message|APIMessage>} [messages] The resolved messages
+   * @property {Collection<Snowflake, Attachment>} [attachments] The resolved attachments
    */
-
-  /**
-   * Transforms the resolved received from the API.
-   * @param {APIInteractionDataResolved} resolved The received resolved objects
-   * @returns {CommandInteractionResolvedData}
-   * @private
-   */
-  transformResolved({ members, users, channels, roles, messages }) {
-    const result = {};
-
-    if (members) {
-      result.members = new Collection();
-      for (const [id, member] of Object.entries(members)) {
-        const user = users[id];
-        result.members.set(id, this.guild?.members._add({ user, ...member }) ?? member);
-      }
-    }
-
-    if (users) {
-      result.users = new Collection();
-      for (const user of Object.values(users)) {
-        result.users.set(user.id, this.client.users._add(user));
-      }
-    }
-
-    if (roles) {
-      result.roles = new Collection();
-      for (const role of Object.values(roles)) {
-        result.roles.set(role.id, this.guild?.roles._add(role) ?? role);
-      }
-    }
-
-    if (channels) {
-      result.channels = new Collection();
-      for (const channel of Object.values(channels)) {
-        result.channels.set(channel.id, this.client.channels._add(channel, this.guild) ?? channel);
-      }
-    }
-
-    if (messages) {
-      result.messages = new Collection();
-      for (const message of Object.values(messages)) {
-        result.messages.set(message.id, this.channel?.messages?._add(message) ?? message);
-      }
-    }
-
-    return result;
-  }
 
   /**
    * Represents an option of a received command interaction.
    * @typedef {Object} CommandInteractionOption
    * @property {string} name The name of the option
    * @property {ApplicationCommandOptionType} type The type of the option
-   * @property {boolean} [autocomplete] Whether the option is an autocomplete option
+   * @property {boolean} [autocomplete] Whether the autocomplete interaction is enabled for a
+   * {@link ApplicationCommandOptionType.String}, {@link ApplicationCommandOptionType.Integer} or
+   * {@link ApplicationCommandOptionType.Number} option
    * @property {string|number|boolean} [value] The value of the option
    * @property {CommandInteractionOption[]} [options] Additional options if this option is a
    * subcommand (group)
@@ -144,6 +105,7 @@ class CommandInteraction extends Interaction {
    * @property {GuildMember|APIGuildMember} [member] The resolved member
    * @property {GuildChannel|ThreadChannel|APIChannel} [channel] The resolved channel
    * @property {Role|APIRole} [role] The resolved role
+   * @property {Attachment} [attachment] The resolved attachment
    */
 
   /**
@@ -174,6 +136,9 @@ class CommandInteraction extends Interaction {
 
       const role = resolved.roles?.[option.value];
       if (role) result.role = this.guild?.roles._add(role) ?? role;
+
+      const attachment = resolved.attachments?.[option.value];
+      if (attachment) result.attachment = new Attachment(attachment);
     }
 
     return result;
@@ -187,14 +152,10 @@ class CommandInteraction extends Interaction {
   editReply() {}
   deleteReply() {}
   followUp() {}
+  showModal() {}
+  awaitModalSubmit() {}
 }
 
 InteractionResponses.applyToClass(CommandInteraction, ['deferUpdate', 'update']);
 
-module.exports = CommandInteraction;
-
-/* eslint-disable max-len */
-/**
- * @external APIInteractionDataResolved
- * @see {@link https://discord.com/developers/docs/interactions/receiving-and-responding#interaction-object-resolved-data-structure}
- */
+exports.CommandInteraction = CommandInteraction;

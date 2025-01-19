@@ -1,15 +1,6 @@
 {
+	"$schema": "https://json.schemastore.org/tsconfig.json",
 	"extends": "../../tsconfig.json",
-	"compilerOptions": {
-		// Type Checking
-		"exactOptionalPropertyTypes": true,
-
-		// Modules
-		"rootDir": "./src",
-
-		// Emit
-		"outDir": "./dist",
-		"sourceRoot": "./"
-	},
-	"include": ["src/**/*.ts"]
+	"include": ["src/**/*.ts", "src/**/*.js", "src/**/*.cjs", "src/**/*.mjs", "bin"],
+	"exclude": ["node_modules"]
 }

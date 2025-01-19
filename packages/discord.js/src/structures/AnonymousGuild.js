@@ -1,6 +1,6 @@
 'use strict';
 
-const BaseGuild = require('./BaseGuild');
+const { BaseGuild } = require('./BaseGuild');
 
 /**
  * Bundles common attributes and methods between {@link Guild} and {@link InviteGuild}
@@ -63,6 +63,16 @@ class AnonymousGuild extends BaseGuild {
        */
       this.nsfwLevel = data.nsfw_level;
     }
+
+    if ('premium_subscription_count' in data) {
+      /**
+       * The total number of boosts for this server
+       * @type {?number}
+       */
+      this.premiumSubscriptionCount = data.premium_subscription_count;
+    } else {
+      this.premiumSubscriptionCount ??= null;
+    }
   }
 
   /**
@@ -84,4 +94,4 @@ class AnonymousGuild extends BaseGuild {
   }
 }
 
-module.exports = AnonymousGuild;
+exports.AnonymousGuild = AnonymousGuild;

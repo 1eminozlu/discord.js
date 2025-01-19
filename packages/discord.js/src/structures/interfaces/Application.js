@@ -1,10 +1,11 @@
 'use strict';
 
 const { DiscordSnowflake } = require('@sapphire/snowflake');
-const Base = require('../Base');
+const { Base } = require('../Base');
 
 /**
  * Represents an OAuth2 Application.
+ * @extends {Base}
  * @abstract
  */
 class Application extends Base {
@@ -48,6 +49,56 @@ class Application extends Base {
       this.icon = data.icon;
     } else {
       this.icon ??= null;
+    }
+
+    if ('terms_of_service_url' in data) {
+      /**
+       * The URL of the application's terms of service
+       * @type {?string}
+       */
+      this.termsOfServiceURL = data.terms_of_service_url;
+    } else {
+      this.termsOfServiceURL ??= null;
+    }
+
+    if ('privacy_policy_url' in data) {
+      /**
+       * The URL of the application's privacy policy
+       * @type {?string}
+       */
+      this.privacyPolicyURL = data.privacy_policy_url;
+    } else {
+      this.privacyPolicyURL ??= null;
+    }
+
+    if ('rpc_origins' in data) {
+      /**
+       * The application's RPC origins, if enabled
+       * @type {string[]}
+       */
+      this.rpcOrigins = data.rpc_origins;
+    } else {
+      this.rpcOrigins ??= [];
+    }
+
+    if ('cover_image' in data) {
+      /**
+       * The hash of the application's cover image
+       * @type {?string}
+       */
+      this.cover = data.cover_image;
+    } else {
+      this.cover ??= null;
+    }
+
+    if ('verify_key' in data) {
+      /**
+       * The hex-encoded key for verification in interactions and the GameSDK's GetTicket
+       * @type {?string}
+       */
+      this.verifyKey = data.verify_key;
+    } else {
+      this.verifyKey ??= null;
     }
   }
 
@@ -104,4 +155,4 @@ class Application extends Base {
   }
 }
 
-module.exports = Application;
+exports.Application = Application;

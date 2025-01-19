@@ -1,335 +1,350 @@
-import type {
-	APIEmbed,
-	APIEmbedAuthor,
-	APIEmbedField,
-	APIEmbedFooter,
-	APIEmbedImage,
-	APIEmbedProvider,
-	APIEmbedThumbnail,
-	APIEmbedVideo,
-} from 'discord-api-types/v9';
-import {
-	authorNamePredicate,
-	colorPredicate,
-	descriptionPredicate,
-	embedFieldsArrayPredicate,
-	fieldInlinePredicate,
-	fieldNamePredicate,
-	fieldValuePredicate,
-	footerTextPredicate,
-	timestampPredicate,
-	titlePredicate,
-	urlPredicate,
-	validateFieldLength,
-} from './Assertions';
+import type { JSONEncodable } from '@discordjs/util';
+import type { APIEmbed, APIEmbedAuthor, APIEmbedField, APIEmbedFooter } from 'discord-api-types/v10';
+import type { RestOrArray } from '../../util/normalizeArray.js';
+import { normalizeArray } from '../../util/normalizeArray.js';
+import { resolveBuilder } from '../../util/resolveBuilder.js';
+import { validate } from '../../util/validation.js';
+import { embedPredicate } from './Assertions.js';
+import { EmbedAuthorBuilder } from './EmbedAuthor.js';
+import { EmbedFieldBuilder } from './EmbedField.js';
+import { EmbedFooterBuilder } from './EmbedFooter.js';
 
-export interface AuthorOptions {
-	name: string;
-	url?: string;
-	iconURL?: string;
-}
-
-export interface FooterOptions {
-	text: string;
-	iconURL?: string;
+/**
+ * Data stored in the process of constructing an embed.
+ */
+export interface EmbedBuilderData extends Omit<APIEmbed, 'author' | 'fields' | 'footer'> {
+	author?: EmbedAuthorBuilder;
+	fields: EmbedFieldBuilder[];
+	footer?: EmbedFooterBuilder;
 }
 
 /**
- * Represents an embed in a message (image/video preview, rich embed, etc.)
+ * A builder that creates API-compatible JSON data for embeds.
  */
-export class Embed implements APIEmbed {
+export class EmbedBuilder implements JSONEncodable<APIEmbed> {
 	/**
-	 * An array of fields of this embed
+	 * The API data associated with this embed.
 	 */
-	public readonly fields: APIEmbedField[];
+	private readonly data: EmbedBuilderData;
 
 	/**
-	 * The embed title
+	 * Gets the fields of this embed.
 	 */
-	public readonly title?: string;
+	public get fields(): readonly EmbedFieldBuilder[] {
+		return this.data.fields;
+	}
 
 	/**
-	 * The embed description
+	 * Creates a new embed from API data.
+	 *
+	 * @param data - The API data to create this embed with
 	 */
-	public readonly description?: string;
-
-	/**
-	 * The embed url
-	 */
-	public readonly url?: string;
-
-	/**
-	 * The embed color
-	 */
-	public readonly color?: number;
-
-	/**
-	 * The timestamp of the embed in the ISO format
-	 */
-	public readonly timestamp?: string;
-
-	/**
-	 * The embed thumbnail data
-	 */
-	public readonly thumbnail?: APIEmbedThumbnail;
-
-	/**
-	 * The embed image data
-	 */
-	public readonly image?: APIEmbedImage;
-
-	/**
-	 * Received video data
-	 */
-	public readonly video?: APIEmbedVideo;
-
-	/**
-	 * The embed author data
-	 */
-	public readonly author?: APIEmbedAuthor;
-
-	/**
-	 * Received data about the embed provider
-	 */
-	public readonly provider?: APIEmbedProvider;
-
-	/**
-	 * The embed footer data
-	 */
-	public readonly footer?: APIEmbedFooter;
-
 	public constructor(data: APIEmbed = {}) {
-		this.title = data.title;
-		this.description = data.description;
-		this.url = data.url;
-		this.color = data.color;
-		this.thumbnail = data.thumbnail;
-		this.image = data.image;
-		this.video = data.video;
-		this.author = data.author;
-		this.provider = data.provider;
-		this.footer = data.footer;
-		this.fields = data.fields ?? [];
-
-		if (data.timestamp) this.timestamp = new Date(data.timestamp).toISOString();
+		this.data = {
+			...structuredClone(data),
+			author: data.author && new EmbedAuthorBuilder(data.author),
+			fields: data.fields?.map((field) => new EmbedFieldBuilder(field)) ?? [],
+			footer: data.footer && new EmbedFooterBuilder(data.footer),
+		};
 	}
 
 	/**
-	 * The accumulated length for the embed title, description, fields, footer text, and author name
-	 */
-	public get length(): number {
-		return (
-			(this.title?.length ?? 0) +
-			(this.description?.length ?? 0) +
-			this.fields.reduce((prev, curr) => prev + curr.name.length + curr.value.length, 0) +
-			(this.footer?.text.length ?? 0) +
-			(this.author?.name.length ?? 0)
-		);
-	}
-
-	/**
-	 * Adds a field to the embed (max 25)
+	 * Appends fields to the embed.
 	 *
-	 * @param field The field to add.
+	 * @remarks
+	 * This method accepts either an array of fields or a variable number of field parameters.
+	 * The maximum amount of fields that can be added is 25.
+	 * @example
+	 * Using an array:
+	 * ```ts
+	 * const fields: APIEmbedField[] = ...;
+	 * const embed = new EmbedBuilder()
+	 * 	.addFields(fields);
+	 * ```
+	 * @example
+	 * Using rest parameters (variadic):
+	 * ```ts
+	 * const embed = new EmbedBuilder()
+	 * 	.addFields(
+	 * 		{ name: 'Field 1', value: 'Value 1' },
+	 * 		{ name: 'Field 2', value: 'Value 2' },
+	 * 	);
+	 * ```
+	 * @param fields - The fields to add
 	 */
-	public addField(field: APIEmbedField): this {
-		return this.addFields(field);
-	}
+	public addFields(
+		...fields: RestOrArray<APIEmbedField | EmbedFieldBuilder | ((builder: EmbedFieldBuilder) => EmbedFieldBuilder)>
+	): this {
+		const normalizedFields = normalizeArray(fields);
+		const resolved = normalizedFields.map((field) => resolveBuilder(field, EmbedFieldBuilder));
 
-	/**
-	 * Adds fields to the embed (max 25)
-	 *
-	 * @param fields The fields to add
-	 */
-	public addFields(...fields: APIEmbedField[]): this {
-		// Data assertions
-		embedFieldsArrayPredicate.parse(fields);
-
-		// Ensure adding these fields won't exceed the 25 field limit
-		validateFieldLength(this.fields, fields.length);
-
-		this.fields.push(...Embed.normalizeFields(...fields));
+		this.data.fields.push(...resolved);
 		return this;
 	}
 
 	/**
-	 * Removes, replaces, or inserts fields in the embed (max 25)
+	 * Removes, replaces, or inserts fields for this embed.
 	 *
-	 * @param index The index to start at
-	 * @param deleteCount The number of fields to remove
-	 * @param fields The replacing field objects
+	 * @remarks
+	 * This method behaves similarly
+	 * to {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/splice | Array.prototype.splice()}.
+	 * The maximum amount of fields that can be added is 25.
+	 *
+	 * It's useful for modifying and adjusting order of the already-existing fields of an embed.
+	 * @example
+	 * Remove the first field:
+	 * ```ts
+	 * embed.spliceFields(0, 1);
+	 * ```
+	 * @example
+	 * Remove the first n fields:
+	 * ```ts
+	 * const n = 4;
+	 * embed.spliceFields(0, n);
+	 * ```
+	 * @example
+	 * Remove the last field:
+	 * ```ts
+	 * embed.spliceFields(-1, 1);
+	 * ```
+	 * @param index - The index to start at
+	 * @param deleteCount - The number of fields to remove
+	 * @param fields - The replacing field objects
 	 */
-	public spliceFields(index: number, deleteCount: number, ...fields: APIEmbedField[]): this {
-		// Data assertions
-		embedFieldsArrayPredicate.parse(fields);
+	public spliceFields(
+		index: number,
+		deleteCount: number,
+		...fields: (APIEmbedField | EmbedFieldBuilder | ((builder: EmbedFieldBuilder) => EmbedFieldBuilder))[]
+	): this {
+		const resolved = fields.map((field) => resolveBuilder(field, EmbedFieldBuilder));
+		this.data.fields.splice(index, deleteCount, ...resolved);
 
-		// Ensure adding these fields won't exceed the 25 field limit
-		validateFieldLength(this.fields, fields.length - deleteCount);
-
-		this.fields.splice(index, deleteCount, ...Embed.normalizeFields(...fields));
 		return this;
 	}
 
 	/**
-	 * Sets the embed's fields (max 25).
-	 * @param fields The fields to set
+	 * Sets the fields for this embed.
+	 *
+	 * @remarks
+	 * This method is an alias for {@link EmbedBuilder.spliceFields}. More specifically,
+	 * it splices the entire array of fields, replacing them with the provided fields.
+	 *
+	 * You can set a maximum of 25 fields.
+	 * @param fields - The fields to set
 	 */
-	public setFields(...fields: APIEmbedField[]) {
-		this.spliceFields(0, this.fields.length, ...fields);
+	public setFields(
+		...fields: RestOrArray<APIEmbedField | EmbedFieldBuilder | ((builder: EmbedFieldBuilder) => EmbedFieldBuilder)>
+	): this {
+		this.spliceFields(0, this.data.fields.length, ...normalizeArray(fields));
 		return this;
 	}
 
 	/**
-	 * Sets the author of this embed
+	 * Sets the author of this embed.
 	 *
-	 * @param options The options for the author
+	 * @param options - The options to use
 	 */
-	public setAuthor(options: AuthorOptions | null): this {
-		if (options === null) {
-			Reflect.set(this, 'author', undefined);
-			return this;
-		}
-
-		const { name, iconURL, url } = options;
-		// Data assertions
-		authorNamePredicate.parse(name);
-		urlPredicate.parse(iconURL);
-		urlPredicate.parse(url);
-
-		Reflect.set(this, 'author', { name, url, icon_url: iconURL });
+	public setAuthor(
+		options: APIEmbedAuthor | EmbedAuthorBuilder | ((builder: EmbedAuthorBuilder) => EmbedAuthorBuilder),
+	): this {
+		this.data.author = resolveBuilder(options, EmbedAuthorBuilder);
 		return this;
 	}
 
 	/**
-	 * Sets the color of this embed
+	 * Updates the author of this embed (and creates it if it doesn't exist).
 	 *
-	 * @param color The color of the embed
+	 * @param updater - The function to update the author with
 	 */
-	public setColor(color: number | null): this {
-		// Data assertions
-		colorPredicate.parse(color);
-
-		Reflect.set(this, 'color', color ?? undefined);
+	public updateAuthor(updater: (builder: EmbedAuthorBuilder) => void) {
+		updater((this.data.author ??= new EmbedAuthorBuilder()));
 		return this;
 	}
 
 	/**
-	 * Sets the description of this embed
-	 *
-	 * @param description The description
+	 * Clears the author of this embed.
 	 */
-	public setDescription(description: string | null): this {
-		// Data assertions
-		descriptionPredicate.parse(description);
-
-		Reflect.set(this, 'description', description ?? undefined);
+	public clearAuthor(): this {
+		this.data.author = undefined;
 		return this;
 	}
 
 	/**
-	 * Sets the footer of this embed
+	 * Sets the color of this embed.
 	 *
-	 * @param options The options for the footer
+	 * @param color - The color to use
 	 */
-	public setFooter(options: FooterOptions | null): this {
-		if (options === null) {
-			Reflect.set(this, 'footer', undefined);
-			return this;
-		}
-
-		const { text, iconURL } = options;
-		// Data assertions
-		footerTextPredicate.parse(text);
-		urlPredicate.parse(iconURL);
-
-		Reflect.set(this, 'footer', { text, icon_url: iconURL });
+	public setColor(color: number): this {
+		this.data.color = color;
 		return this;
 	}
 
 	/**
-	 * Sets the image of this embed
-	 *
-	 * @param url The URL of the image
+	 * Clears the color of this embed.
 	 */
-	public setImage(url: string | null): this {
-		// Data assertions
-		urlPredicate.parse(url);
-
-		Reflect.set(this, 'image', url ? { url } : undefined);
+	public clearColor(): this {
+		this.data.color = undefined;
 		return this;
 	}
 
 	/**
-	 * Sets the thumbnail of this embed
+	 * Sets the description of this embed.
 	 *
-	 * @param url The URL of the thumbnail
+	 * @param description - The description to use
 	 */
-	public setThumbnail(url: string | null): this {
-		// Data assertions
-		urlPredicate.parse(url);
-
-		Reflect.set(this, 'thumbnail', url ? { url } : undefined);
+	public setDescription(description: string): this {
+		this.data.description = description;
 		return this;
 	}
 
 	/**
-	 * Sets the timestamp of this embed
-	 *
-	 * @param timestamp The timestamp or date
+	 * Clears the description of this embed.
 	 */
-	public setTimestamp(timestamp: number | Date | null = Date.now()): this {
-		// Data assertions
-		timestampPredicate.parse(timestamp);
-
-		Reflect.set(this, 'timestamp', timestamp ? new Date(timestamp).toISOString() : undefined);
+	public clearDescription(): this {
+		this.data.description = undefined;
 		return this;
 	}
 
 	/**
-	 * Sets the title of this embed
+	 * Sets the footer of this embed.
 	 *
-	 * @param title The title
+	 * @param options - The footer to use
 	 */
-	public setTitle(title: string | null): this {
-		// Data assertions
-		titlePredicate.parse(title);
-
-		Reflect.set(this, 'title', title ?? undefined);
+	public setFooter(
+		options: APIEmbedFooter | EmbedFooterBuilder | ((builder: EmbedFooterBuilder) => EmbedFooterBuilder),
+	): this {
+		this.data.footer = resolveBuilder(options, EmbedFooterBuilder);
 		return this;
 	}
 
 	/**
-	 * Sets the URL of this embed
+	 * Updates the footer of this embed (and creates it if it doesn't exist).
 	 *
-	 * @param url The URL
+	 * @param updater - The function to update the footer with
 	 */
-	public setURL(url: string | null): this {
-		// Data assertions
-		urlPredicate.parse(url);
-
-		Reflect.set(this, 'url', url ?? undefined);
+	public updateFooter(updater: (builder: EmbedFooterBuilder) => void) {
+		updater((this.data.footer ??= new EmbedFooterBuilder()));
 		return this;
 	}
 
 	/**
-	 * Transforms the embed to a plain object
+	 * Clears the footer of this embed.
 	 */
-	public toJSON(): APIEmbed {
-		return { ...this };
+	public clearFooter(): this {
+		this.data.footer = undefined;
+		return this;
 	}
 
 	/**
-	 * Normalizes field input and resolves strings
+	 * Sets the image of this embed.
 	 *
-	 * @param fields Fields to normalize
+	 * @param url - The image URL to use
 	 */
-	public static normalizeFields(...fields: APIEmbedField[]): APIEmbedField[] {
-		return fields.flat(Infinity).map((field) => {
-			fieldNamePredicate.parse(field.name);
-			fieldValuePredicate.parse(field.value);
-			fieldInlinePredicate.parse(field.inline);
+	public setImage(url: string): this {
+		this.data.image = { url };
+		return this;
+	}
 
-			return { name: field.name, value: field.value, inline: field.inline ?? undefined };
-		});
+	/**
+	 * Clears the image of this embed.
+	 */
+	public clearImage(): this {
+		this.data.image = undefined;
+		return this;
+	}
+
+	/**
+	 * Sets the thumbnail of this embed.
+	 *
+	 * @param url - The thumbnail URL to use
+	 */
+	public setThumbnail(url: string): this {
+		this.data.thumbnail = { url };
+		return this;
+	}
+
+	/**
+	 * Clears the thumbnail of this embed.
+	 */
+	public clearThumbnail(): this {
+		this.data.thumbnail = undefined;
+		return this;
+	}
+
+	/**
+	 * Sets the timestamp of this embed.
+	 *
+	 * @param timestamp - The timestamp or date to use
+	 */
+	public setTimestamp(timestamp: Date | number | string = Date.now()): this {
+		this.data.timestamp = new Date(timestamp).toISOString();
+		return this;
+	}
+
+	/**
+	 * Clears the timestamp of this embed.
+	 */
+	public clearTimestamp(): this {
+		this.data.timestamp = undefined;
+		return this;
+	}
+
+	/**
+	 * Sets the title for this embed.
+	 *
+	 * @param title - The title to use
+	 */
+	public setTitle(title: string): this {
+		this.data.title = title;
+		return this;
+	}
+
+	/**
+	 * Clears the title of this embed.
+	 */
+	public clearTitle(): this {
+		this.data.title = undefined;
+		return this;
+	}
+
+	/**
+	 * Sets the URL of this embed.
+	 *
+	 * @param url - The URL to use
+	 */
+	public setURL(url: string): this {
+		this.data.url = url;
+		return this;
+	}
+
+	/**
+	 * Clears the URL of this embed.
+	 */
+	public clearURL(): this {
+		this.data.url = undefined;
+		return this;
+	}
+
+	/**
+	 * Serializes this builder to API-compatible JSON data.
+	 *
+	 * Note that by disabling validation, there is no guarantee that the resulting object will be valid.
+	 *
+	 * @param validationOverride - Force validation to run/not run regardless of your global preference
+	 */
+	public toJSON(validationOverride?: boolean): APIEmbed {
+		const { author, fields, footer, ...rest } = this.data;
+
+		const data = {
+			...structuredClone(rest),
+			// Disable validation because the embedPredicate below will validate those as well
+			author: this.data.author?.toJSON(false),
+			fields: this.data.fields?.map((field) => field.toJSON(false)),
+			footer: this.data.footer?.toJSON(false),
+		};
+
+		validate(embedPredicate, data, validationOverride);
+
+		return data;
 	}
 }

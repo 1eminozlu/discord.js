@@ -1,12 +1,12 @@
 'use strict';
 
-const Action = require('./Action');
-const { Events } = require('../../util/Constants');
+const { Action } = require('./Action');
+const { Events } = require('../../util/Events');
 
 class StageInstanceDeleteAction extends Action {
   handle(data) {
     const client = this.client;
-    const channel = this.getChannel(data);
+    const channel = this.getChannel({ id: data.channel_id, guild_id: data.guild_id });
 
     if (channel) {
       const stageInstance = channel.guild.stageInstances._add(data);
@@ -18,7 +18,7 @@ class StageInstanceDeleteAction extends Action {
          * @event Client#stageInstanceDelete
          * @param {StageInstance} stageInstance The deleted stage instance
          */
-        client.emit(Events.STAGE_INSTANCE_DELETE, stageInstance);
+        client.emit(Events.StageInstanceDelete, stageInstance);
 
         return { stageInstance };
       }
@@ -28,4 +28,4 @@ class StageInstanceDeleteAction extends Action {
   }
 }
 
-module.exports = StageInstanceDeleteAction;
+exports.StageInstanceDeleteAction = StageInstanceDeleteAction;

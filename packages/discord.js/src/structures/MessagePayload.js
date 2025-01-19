@@ -1,12 +1,13 @@
 'use strict';
 
 const { Buffer } = require('node:buffer');
-const { createComponent, Embed } = require('@discordjs/builders');
-const { MessageFlags } = require('discord-api-types/v9');
-const { RangeError } = require('../errors');
-const DataResolver = require('../util/DataResolver');
-const MessageFlagsBitField = require('../util/MessageFlagsBitField');
-const Util = require('../util/Util');
+const { isJSONEncodable } = require('@discordjs/util');
+const { DiscordSnowflake } = require('@sapphire/snowflake');
+const { ActionRowBuilder } = require('./ActionRowBuilder');
+const { DiscordjsError, DiscordjsRangeError, ErrorCodes } = require('../errors');
+const { resolveFile } = require('../util/DataResolver');
+const { MessageFlagsBitField } = require('../util/MessageFlagsBitField');
+const { basename, verifyString, resolvePartialEmoji } = require('../util/Util');
 
 /**
  * Represents a message to be sent to the API.
@@ -14,7 +15,7 @@ const Util = require('../util/Util');
 class MessagePayload {
   /**
    * @param {MessageTarget} target The target for this message to be sent to
-   * @param {MessageOptions|WebhookMessageOptions} options Options passed in from send
+   * @param {MessagePayloadOption} options The payload of this message
    */
   constructor(target, options) {
     /**
@@ -24,8 +25,8 @@ class MessagePayload {
     this.target = target;
 
     /**
-     * Options passed in from send
-     * @type {MessageOptions|WebhookMessageOptions}
+     * The payload of this message.
+     * @type {MessagePayloadOption}
      */
     this.options = options;
 
@@ -48,8 +49,8 @@ class MessagePayload {
    * @readonly
    */
   get isWebhook() {
-    const Webhook = require('./Webhook');
-    const WebhookClient = require('../client/WebhookClient');
+    const { Webhook } = require('./Webhook');
+    const { WebhookClient } = require('../client/WebhookClient');
     return this.target instanceof Webhook || this.target instanceof WebhookClient;
   }
 
@@ -59,7 +60,7 @@ class MessagePayload {
    * @readonly
    */
   get isUser() {
-    const User = require('./User');
+    const { User } = require('./User');
     const { GuildMember } = require('./GuildMember');
     return this.target instanceof User || this.target instanceof GuildMember;
   }
@@ -80,19 +81,8 @@ class MessagePayload {
    * @readonly
    */
   get isMessageManager() {
-    const MessageManager = require('../managers/MessageManager');
+    const { MessageManager } = require('../managers/MessageManager');
     return this.target instanceof MessageManager;
-  }
-
-  /**
-   * Whether or not the target is an {@link Interaction} or an {@link InteractionWebhook}
-   * @type {boolean}
-   * @readonly
-   */
-  get isInteraction() {
-    const Interaction = require('./Interaction');
-    const InteractionWebhook = require('./InteractionWebhook');
-    return this.target instanceof Interaction || this.target instanceof InteractionWebhook;
   }
 
   /**
@@ -103,8 +93,8 @@ class MessagePayload {
     let content;
     if (this.options.content === null) {
       content = '';
-    } else if (typeof this.options.content !== 'undefined') {
-      content = Util.verifyString(this.options.content, RangeError, 'MESSAGE_CONTENT_TYPE', false);
+    } else if (this.options.content !== undefined) {
+      content = verifyString(this.options.content, DiscordjsRangeError, ErrorCodes.MessageContentType, true);
     }
 
     return content;
@@ -115,59 +105,72 @@ class MessagePayload {
    * @returns {MessagePayload}
    */
   resolveBody() {
-    if (this.data) return this;
-    const isInteraction = this.isInteraction;
+    if (this.body) return this;
     const isWebhook = this.isWebhook;
 
     const content = this.makeContent();
     const tts = Boolean(this.options.tts);
 
     let nonce;
-    if (typeof this.options.nonce !== 'undefined') {
+    if (this.options.nonce !== undefined) {
       nonce = this.options.nonce;
-      // eslint-disable-next-line max-len
       if (typeof nonce === 'number' ? !Number.isInteger(nonce) : typeof nonce !== 'string') {
-        throw new RangeError('MESSAGE_NONCE_TYPE');
+        throw new DiscordjsRangeError(ErrorCodes.MessageNonceType);
       }
     }
 
-    const components = this.options.components?.map(c => createComponent(c).toJSON());
+    let enforce_nonce = Boolean(this.options.enforceNonce);
+
+    // If `nonce` isn't provided, generate one & set `enforceNonce`
+    // Unless `enforceNonce` is explicitly set to `false`(not just falsy)
+    if (nonce === undefined) {
+      if (this.options.enforceNonce !== false && this.target.client.options.enforceNonce) {
+        nonce = DiscordSnowflake.generate().toString();
+        enforce_nonce = true;
+      } else if (enforce_nonce) {
+        throw new DiscordjsError(ErrorCodes.MessageNonceRequired);
+      }
+    }
+
+    const components = this.options.components?.map(component =>
+      (isJSONEncodable(component) ? component : new ActionRowBuilder(component)).toJSON(),
+    );
 
     let username;
     let avatarURL;
+    let threadName;
+    let appliedTags;
     if (isWebhook) {
       username = this.options.username ?? this.target.name;
       if (this.options.avatarURL) avatarURL = this.options.avatarURL;
+      if (this.options.threadName) threadName = this.options.threadName;
+      if (this.options.appliedTags) appliedTags = this.options.appliedTags;
     }
 
     let flags;
-    if (typeof this.options.flags !== 'undefined' || this.isMessage || this.isMessageManager) {
-      flags =
-        // eslint-disable-next-line eqeqeq
-        this.options.flags != null
-          ? new MessageFlagsBitField(this.options.flags).bitfield
-          : this.target.flags?.bitfield;
-    }
-
-    if (isInteraction && this.options.ephemeral) {
-      flags |= MessageFlags.Ephemeral;
+    if (
+      // eslint-disable-next-line eqeqeq
+      this.options.flags != null ||
+      (this.isMessage && this.options.reply === undefined) ||
+      this.isMessageManager
+    ) {
+      flags = new MessageFlagsBitField(this.options.flags).bitfield;
     }
 
     let allowedMentions =
-      typeof this.options.allowedMentions === 'undefined'
+      this.options.allowedMentions === undefined
         ? this.target.client.options.allowedMentions
         : this.options.allowedMentions;
 
-    if (allowedMentions) {
-      allowedMentions = Util.cloneObject(allowedMentions);
-      allowedMentions.replied_user = allowedMentions.repliedUser;
+    if (allowedMentions?.repliedUser !== undefined) {
+      allowedMentions = { ...allowedMentions, replied_user: allowedMentions.repliedUser };
       delete allowedMentions.repliedUser;
     }
 
     let message_reference;
     if (typeof this.options.reply === 'object') {
       const reference = this.options.reply.messageReference;
-      const message_id = this.isMessage ? reference.id ?? reference : this.target.messages.resolveId(reference);
+      const message_id = this.isMessage ? (reference.id ?? reference) : this.target.messages.resolveId(reference);
       if (message_id) {
         message_reference = {
           message_id,
@@ -186,20 +189,40 @@ class MessagePayload {
       this.options.attachments = attachments;
     }
 
+    let poll;
+    if (this.options.poll) {
+      poll = {
+        question: {
+          text: this.options.poll.question.text,
+        },
+        answers: this.options.poll.answers.map(answer => ({
+          poll_media: { text: answer.text, emoji: resolvePartialEmoji(answer.emoji) },
+        })),
+        duration: this.options.poll.duration,
+        allow_multiselect: this.options.poll.allowMultiselect,
+        layout_type: this.options.poll.layoutType,
+      };
+    }
+
     this.body = {
       content,
       tts,
       nonce,
-      embeds: this.options.embeds?.map(embed => (embed instanceof Embed ? embed : new Embed(embed)).toJSON()),
+      enforce_nonce,
+      embeds: this.options.embeds?.map(embed =>
+        isJSONEncodable(embed) ? embed.toJSON() : this.target.client.options.jsonTransformer(embed),
+      ),
       components,
       username,
       avatar_url: avatarURL,
-      allowed_mentions:
-        typeof content === 'undefined' && typeof message_reference === 'undefined' ? undefined : allowedMentions,
+      allowed_mentions: content === undefined && message_reference === undefined ? undefined : allowedMentions,
       flags,
       message_reference,
       attachments: this.options.attachments,
       sticker_ids: this.options.stickers?.map(sticker => sticker.id ?? sticker),
+      thread_name: threadName,
+      applied_tags: appliedTags,
+      poll,
     };
     return this;
   }
@@ -217,20 +240,20 @@ class MessagePayload {
 
   /**
    * Resolves a single file into an object sendable to the API.
-   * @param {BufferResolvable|Stream|FileOptions|MessageAttachment} fileLike Something that could be resolved to a file
+   * @param {AttachmentPayload|BufferResolvable|Stream} fileLike Something that could be resolved to a file
    * @returns {Promise<RawFile>}
    */
   static async resolveFile(fileLike) {
     let attachment;
-    let fileName;
+    let name;
 
     const findName = thing => {
       if (typeof thing === 'string') {
-        return Util.basename(thing);
+        return basename(thing);
       }
 
       if (thing.path) {
-        return Util.basename(thing.path);
+        return basename(thing.path);
       }
 
       return 'file.jpg';
@@ -240,21 +263,21 @@ class MessagePayload {
       typeof fileLike === 'string' || fileLike instanceof Buffer || typeof fileLike.pipe === 'function';
     if (ownAttachment) {
       attachment = fileLike;
-      fileName = findName(attachment);
+      name = findName(attachment);
     } else {
       attachment = fileLike.attachment;
-      fileName = fileLike.name ?? findName(attachment);
+      name = fileLike.name ?? findName(attachment);
     }
 
-    const fileData = await DataResolver.resolveFile(attachment);
-    return { fileData, fileName };
+    const { data, contentType } = await resolveFile(attachment);
+    return { data, name, contentType };
   }
 
   /**
    * Creates a {@link MessagePayload} from user-level arguments.
    * @param {MessageTarget} target Target to send to
-   * @param {string|MessageOptions|WebhookMessageOptions} options Options or content to use
-   * @param {MessageOptions|WebhookMessageOptions} [extra={}] Extra options to add onto specified options
+   * @param {string|MessagePayloadOption} options Options or content to use
+   * @param {MessagePayloadOption} [extra={}] Extra options to add onto specified options
    * @returns {MessagePayload}
    */
   static create(target, options, extra = {}) {
@@ -265,20 +288,21 @@ class MessagePayload {
   }
 }
 
-module.exports = MessagePayload;
+exports.MessagePayload = MessagePayload;
 
 /**
  * A target for a message.
- * @typedef {TextChannel|DMChannel|User|GuildMember|Webhook|WebhookClient|Interaction|InteractionWebhook|
+ * @typedef {TextBasedChannels|User|GuildMember|Webhook|WebhookClient|BaseInteraction|InteractionWebhook|
  * Message|MessageManager} MessageTarget
  */
 
 /**
- * @external APIMessage
- * @see {@link https://discord.com/developers/docs/resources/channel#message-object}
+ * A possible payload option.
+ * @typedef {MessageCreateOptions|MessageEditOptions|WebhookMessageCreateOptions|WebhookMessageEditOptions|
+ * InteractionReplyOptions|InteractionUpdateOptions} MessagePayloadOption
  */
 
 /**
  * @external RawFile
- * @see {@link https://discord.js.org/#/docs/rest/main/typedef/RawFile}
+ * @see {@link https://discord.js.org/docs/packages/rest/stable/RawFile:Interface}
  */

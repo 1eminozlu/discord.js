@@ -1,7 +1,7 @@
 'use strict';
 
 const { Collection } = require('@discordjs/collection');
-const { TypeError } = require('../errors/DJSError.js');
+const { DiscordjsTypeError, ErrorCodes } = require('../errors');
 
 /**
  * Options for defining the behavior of a LimitedCollection
@@ -20,15 +20,15 @@ const { TypeError } = require('../errors/DJSError.js');
 class LimitedCollection extends Collection {
   constructor(options = {}, iterable) {
     if (typeof options !== 'object' || options === null) {
-      throw new TypeError('INVALID_TYPE', 'options', 'object', true);
+      throw new DiscordjsTypeError(ErrorCodes.InvalidType, 'options', 'object', true);
     }
     const { maxSize = Infinity, keepOverLimit = null } = options;
 
     if (typeof maxSize !== 'number') {
-      throw new TypeError('INVALID_TYPE', 'maxSize', 'number');
+      throw new DiscordjsTypeError(ErrorCodes.InvalidType, 'maxSize', 'number');
     }
     if (keepOverLimit !== null && typeof keepOverLimit !== 'function') {
-      throw new TypeError('INVALID_TYPE', 'keepOverLimit', 'function');
+      throw new DiscordjsTypeError(ErrorCodes.InvalidType, 'keepOverLimit', 'function');
     }
 
     super(iterable);
@@ -47,7 +47,7 @@ class LimitedCollection extends Collection {
   }
 
   set(key, value) {
-    if (this.maxSize === 0) return this;
+    if (this.maxSize === 0 && !this.keepOverLimit?.(value, key, this)) return this;
     if (this.size >= this.maxSize && !this.has(key)) {
       for (const [k, v] of this.entries()) {
         const keep = this.keepOverLimit?.(v, k, this) ?? false;
@@ -65,4 +65,4 @@ class LimitedCollection extends Collection {
   }
 }
 
-module.exports = LimitedCollection;
+exports.LimitedCollection = LimitedCollection;

@@ -1,9 +1,9 @@
 'use strict';
 
-const { Routes, PermissionFlagsBits } = require('discord-api-types/v9');
-const BaseGuildEmoji = require('./BaseGuildEmoji');
-const { Error } = require('../errors');
-const GuildEmojiRoleManager = require('../managers/GuildEmojiRoleManager');
+const { PermissionFlagsBits } = require('discord-api-types/v10');
+const { BaseGuildEmoji } = require('./BaseGuildEmoji');
+const { DiscordjsError, ErrorCodes } = require('../errors');
+const { GuildEmojiRoleManager } = require('../managers/GuildEmojiRoleManager');
 
 /**
  * Represents a custom emoji.
@@ -55,8 +55,8 @@ class GuildEmoji extends BaseGuildEmoji {
    * @readonly
    */
   get deletable() {
-    if (!this.guild.me) throw new Error('GUILD_UNCACHED_ME');
-    return !this.managed && this.guild.me.permissions.has(PermissionFlagsBits.ManageEmojisAndStickers);
+    if (!this.guild.members.me) throw new DiscordjsError(ErrorCodes.GuildUncachedMe);
+    return !this.managed && this.guild.members.me.permissions.has(PermissionFlagsBits.ManageGuildExpressions);
   }
 
   /**
@@ -72,40 +72,30 @@ class GuildEmoji extends BaseGuildEmoji {
    * Fetches the author for this emoji
    * @returns {Promise<User>}
    */
-  async fetchAuthor() {
-    if (this.managed) {
-      throw new Error('EMOJI_MANAGED');
-    } else {
-      if (!this.guild.me) throw new Error('GUILD_UNCACHED_ME');
-      if (!this.guild.me.permissions.has(PermissionFlagsBits.ManageEmojisAndStickers)) {
-        throw new Error('MISSING_MANAGE_EMOJIS_AND_STICKERS_PERMISSION', this.guild);
-      }
-    }
-    const data = await this.client.rest.get(Routes.guildEmoji(this.guild.id, this.id));
-    this._patch(data);
-    return this.author;
+  fetchAuthor() {
+    return this.guild.emojis.fetchAuthor(this);
   }
 
   /**
    * Data for editing an emoji.
-   * @typedef {Object} GuildEmojiEditData
+   * @typedef {Object} GuildEmojiEditOptions
    * @property {string} [name] The name of the emoji
    * @property {Collection<Snowflake, Role>|RoleResolvable[]} [roles] Roles to restrict emoji to
+   * @property {string} [reason] Reason for editing this emoji
    */
 
   /**
    * Edits the emoji.
-   * @param {GuildEmojiEditData} data The new data for the emoji
-   * @param {string} [reason] Reason for editing this emoji
+   * @param {GuildEmojiEditOptions} options The options to provide
    * @returns {Promise<GuildEmoji>}
    * @example
    * // Edit an emoji
    * emoji.edit({ name: 'newemoji' })
-   *   .then(e => console.log(`Edited emoji ${e}`))
+   *   .then(emoji => console.log(`Edited emoji ${emoji}`))
    *   .catch(console.error);
    */
-  edit(data, reason) {
-    return this.guild.emojis.edit(this.id, data, reason);
+  edit(options) {
+    return this.guild.emojis.edit(this.id, options);
   }
 
   /**
@@ -115,7 +105,7 @@ class GuildEmoji extends BaseGuildEmoji {
    * @returns {Promise<GuildEmoji>}
    */
   setName(name, reason) {
-    return this.edit({ name }, reason);
+    return this.edit({ name, reason });
   }
 
   /**
@@ -155,4 +145,4 @@ class GuildEmoji extends BaseGuildEmoji {
   }
 }
 
-module.exports = GuildEmoji;
+exports.GuildEmoji = GuildEmoji;

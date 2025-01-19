@@ -1,8 +1,10 @@
 'use strict';
 
 const { DiscordSnowflake } = require('@sapphire/snowflake');
-const { Routes, StickerFormatType } = require('discord-api-types/v9');
-const Base = require('./Base');
+const { Routes } = require('discord-api-types/v10');
+const { Base } = require('./Base');
+const { DiscordjsError, ErrorCodes } = require('../errors');
+const { StickerFormatExtensionMap } = require('../util/Constants');
 
 /**
  * Represents a Sticker.
@@ -70,10 +72,10 @@ class Sticker extends Base {
 
     if ('tags' in sticker) {
       /**
-       * An array of tags for the sticker
-       * @type {?string[]}
+       * Autocomplete/suggestions for the sticker
+       * @type {?string}
        */
-      this.tags = sticker.tags.split(', ');
+      this.tags = sticker.tags;
     } else {
       this.tags ??= null;
     }
@@ -160,9 +162,10 @@ class Sticker extends Base {
    * <info>If the sticker's format is {@link StickerFormatType.Lottie}, it returns
    * the URL of the Lottie JSON file.</info>
    * @type {string}
+   * @readonly
    */
   get url() {
-    return this.client.rest.cdn.sticker(this.id, this.format === StickerFormatType.Lottie ? 'json' : 'png');
+    return this.client.rest.cdn.sticker(this.id, StickerFormatExtensionMap[this.format]);
   }
 
   /**
@@ -176,11 +179,12 @@ class Sticker extends Base {
   }
 
   /**
-   * Fetches the pack this sticker is part of from Discord, if this is a Nitro sticker.
-   * @returns {Promise<?StickerPack>}
+   * Fetches the pack that contains this sticker.
+   * @returns {Promise<?StickerPack>} The sticker pack or `null` if this sticker does not belong to one.
    */
-  async fetchPack() {
-    return (this.packId && (await this.client.fetchPremiumStickerPacks()).get(this.packId)) ?? null;
+  fetchPack() {
+    if (!this.packId) return Promise.resolve(null);
+    return this.client.fetchStickerPacks({ packId: this.packId });
   }
 
   /**
@@ -189,34 +193,31 @@ class Sticker extends Base {
    */
   async fetchUser() {
     if (this.partial) await this.fetch();
-    if (!this.guildId) throw new Error('NOT_GUILD_STICKER');
-
-    const data = await this.client.rest.get(Routes.guildSticker(this.guildId, this.id));
-    this._patch(data);
-    return this.user;
+    if (!this.guildId) throw new DiscordjsError(ErrorCodes.NotGuildSticker);
+    return this.guild.stickers.fetchUser(this);
   }
 
   /**
    * Data for editing a sticker.
-   * @typedef {Object} GuildStickerEditData
+   * @typedef {Object} GuildStickerEditOptions
    * @property {string} [name] The name of the sticker
    * @property {?string} [description] The description of the sticker
    * @property {string} [tags] The Discord name of a unicode emoji representing the sticker's expression
+   * @property {string} [reason] Reason for editing this sticker
    */
 
   /**
    * Edits the sticker.
-   * @param {GuildStickerEditData} [data] The new data for the sticker
-   * @param {string} [reason] Reason for editing this sticker
+   * @param {GuildStickerEditOptions} options The options to provide
    * @returns {Promise<Sticker>}
    * @example
    * // Update the name of a sticker
    * sticker.edit({ name: 'new name' })
-   *   .then(s => console.log(`Updated the name of the sticker to ${s.name}`))
+   *   .then(sticker => console.log(`Updated the name of the sticker to ${sticker.name}`))
    *   .catch(console.error);
    */
-  edit(data, reason) {
-    return this.guild.stickers.edit(this, data, reason);
+  edit(options) {
+    return this.guild.stickers.edit(this, options);
   }
 
   /**
@@ -226,7 +227,7 @@ class Sticker extends Base {
    * @example
    * // Delete a message
    * sticker.delete()
-   *   .then(s => console.log(`Deleted sticker ${s.name}`))
+   *   .then(sticker => console.log(`Deleted sticker ${sticker.name}`))
    *   .catch(console.error);
    */
   async delete(reason) {
@@ -248,8 +249,7 @@ class Sticker extends Base {
         other.format === this.format &&
         other.name === this.name &&
         other.packId === this.packId &&
-        other.tags.length === this.tags.length &&
-        other.tags.every(tag => this.tags.includes(tag)) &&
+        other.tags === this.tags &&
         other.available === this.available &&
         other.guildId === this.guildId &&
         other.sortValue === this.sortValue
@@ -259,15 +259,10 @@ class Sticker extends Base {
         other.id === this.id &&
         other.description === this.description &&
         other.name === this.name &&
-        other.tags === this.tags.join(', ')
+        other.tags === this.tags
       );
     }
   }
 }
 
 exports.Sticker = Sticker;
-
-/**
- * @external APISticker
- * @see {@link https://discord.com/developers/docs/resources/sticker#sticker-object}
- */

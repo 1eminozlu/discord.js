@@ -1,12 +1,19 @@
 'use strict';
 
-const BitField = require('./BitField');
+const { BitField } = require('./BitField');
 
 /**
  * Data structure that makes it easy to interact with a {@link ThreadMember#flags} bitfield.
  * @extends {BitField}
  */
-class ThreadMemberFlagsBitField extends BitField {}
+class ThreadMemberFlagsBitField extends BitField {
+  /**
+   * Numeric thread member flags. There are currently no bitflags relevant to bots for this.
+   * @type {Object<string, number>}
+   * @memberof ThreadMemberFlagsBitField
+   */
+  static Flags = {};
+}
 
 /**
  * @name ThreadMemberFlagsBitField
@@ -21,10 +28,4 @@ class ThreadMemberFlagsBitField extends BitField {}
  * @name ThreadMemberFlagsBitField#bitfield
  */
 
-/**
- * Numeric thread member flags. There are currently no bitflags relevant to bots for this.
- * @type {Object<string, number>}
- */
-ThreadMemberFlagsBitField.Flags = {};
-
-module.exports = ThreadMemberFlagsBitField;
+exports.ThreadMemberFlagsBitField = ThreadMemberFlagsBitField;

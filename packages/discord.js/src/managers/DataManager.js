@@ -1,7 +1,7 @@
 'use strict';
 
-const BaseManager = require('./BaseManager');
-const { Error } = require('../errors');
+const { BaseManager } = require('./BaseManager');
+const { DiscordjsError, ErrorCodes } = require('../errors');
 
 /**
  * Manages the API methods of a data model along with a collection of instances.
@@ -28,7 +28,7 @@ class DataManager extends BaseManager {
    * @abstract
    */
   get cache() {
-    throw new Error('NOT_IMPLEMENTED', 'get cache', this.constructor.name);
+    throw new DiscordjsError(ErrorCodes.NotImplemented, 'get cache', this.constructor.name);
   }
 
   /**
@@ -58,4 +58,4 @@ class DataManager extends BaseManager {
   }
 }
 
-module.exports = DataManager;
+exports.DataManager = DataManager;

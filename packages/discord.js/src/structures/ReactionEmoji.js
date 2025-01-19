@@ -1,7 +1,7 @@
 'use strict';
 
 const { Emoji } = require('./Emoji');
-const Util = require('../util/Util');
+const { flatten } = require('../util/Util');
 
 /**
  * Represents a limited emoji set used for both custom and unicode emojis. Custom emojis
@@ -20,7 +20,7 @@ class ReactionEmoji extends Emoji {
   }
 
   toJSON() {
-    return Util.flatten(this, { identifier: true });
+    return flatten(this, { identifier: true });
   }
 
   valueOf() {
@@ -28,4 +28,4 @@ class ReactionEmoji extends Emoji {
   }
 }
 
-module.exports = ReactionEmoji;
+exports.ReactionEmoji = ReactionEmoji;

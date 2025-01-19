@@ -25,7 +25,6 @@ import {
   APIInteractionDataResolvedGuildMember,
   APIInteractionGuildMember,
   APIInvite,
-  APIInviteStageInstance,
   APIMessage,
   APIMessageButtonInteractionData,
   APIMessageComponentInteraction,
@@ -47,6 +46,7 @@ import {
   APIUnavailableGuild,
   APIUser,
   APIVoiceRegion,
+  APIVoiceState,
   APIWebhook,
   GatewayActivity,
   GatewayActivityAssets,
@@ -62,7 +62,6 @@ import {
   GatewayPresenceUpdate,
   GatewayReadyDispatchData,
   GatewayTypingStartDispatchData,
-  GatewayVoiceState,
   RESTAPIPartialCurrentUserGuild,
   RESTGetAPIWebhookWithTokenResult,
   RESTPatchAPIChannelMessageJSONBody,
@@ -76,8 +75,8 @@ import {
   RESTPostAPIWebhookWithTokenJSONBody,
   Snowflake,
   APIGuildScheduledEvent,
-} from 'discord-api-types/v9';
-import { GuildChannel, Guild, PermissionOverwrites } from '.';
+} from 'discord-api-types/v10';
+import { GuildChannel, Guild, PermissionOverwrites } from './index.js';
 
 export type RawActivityData = GatewayActivity;
 
@@ -102,6 +101,7 @@ export type RawEmojiData =
   | RawReactionEmojiData
   | GatewayActivityEmoji
   | Omit<Partial<APIPartialEmoji>, 'animated'>;
+export type RawApplicationEmojiData = APIEmoji;
 export type RawGuildEmojiData = APIEmoji;
 export type RawReactionEmojiData = APIEmoji | APIPartialEmoji;
 
@@ -147,12 +147,10 @@ export type RawInviteData =
   | (GatewayInviteCreateDispatchData & { channel: GuildChannel; guild: Guild })
   | (GatewayInviteDeleteDispatchData & { channel: GuildChannel; guild: Guild });
 
-export type RawInviteStageInstance = APIInviteStageInstance;
-
 export type RawMessageData = APIMessage;
 export type RawPartialMessageData = GatewayMessageUpdateDispatchData;
 
-export type RawMessageAttachmentData = APIAttachment;
+export type RawAttachmentData = APIAttachment;
 
 export type RawMessagePayloadData =
   | RESTPostAPIChannelMessageJSONBody
@@ -194,7 +192,7 @@ export type RawUserData =
 
 export type RawVoiceRegionData = APIVoiceRegion;
 
-export type RawVoiceStateData = GatewayVoiceState | Omit<GatewayVoiceState, 'guild_id'>;
+export type RawVoiceStateData = APIVoiceState | Omit<APIVoiceState, 'guild_id'>;
 
 export type RawWebhookData =
   | APIWebhook

@@ -1,7 +1,7 @@
 'use strict';
 
 const { DiscordSnowflake } = require('@sapphire/snowflake');
-const Base = require('./Base');
+const { Base } = require('./Base');
 
 /**
  * Represents a stage instance.
@@ -53,15 +53,14 @@ class StageInstance extends Base {
       this.privacyLevel = data.privacy_level;
     }
 
-    if ('discoverable_disabled' in data) {
+    if ('guild_scheduled_event_id' in data) {
       /**
-       * Whether or not stage discovery is disabled
-       * @type {?boolean}
-       * @deprecated See https://github.com/discord/discord-api-docs/pull/4296 for more information
+       * The associated guild scheduled event id of this stage instance
+       * @type {?Snowflake}
        */
-      this.discoverableDisabled = data.discoverable_disabled;
+      this.guildScheduledEventId = data.guild_scheduled_event_id;
     } else {
-      this.discoverableDisabled ??= null;
+      this.guildScheduledEventId ??= null;
     }
   }
 
@@ -81,6 +80,15 @@ class StageInstance extends Base {
    */
   get guild() {
     return this.client.guilds.resolve(this.guildId);
+  }
+
+  /**
+   * The associated guild scheduled event of this stage instance
+   * @type {?GuildScheduledEvent}
+   * @readonly
+   */
+  get guildScheduledEvent() {
+    return this.guild?.scheduledEvents.resolve(this.guildScheduledEventId) ?? null;
   }
 
   /**

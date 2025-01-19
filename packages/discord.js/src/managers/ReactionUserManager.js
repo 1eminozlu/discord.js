@@ -1,10 +1,11 @@
 'use strict';
 
 const { Collection } = require('@discordjs/collection');
-const { Routes } = require('discord-api-types/v9');
-const CachedManager = require('./CachedManager');
-const { Error } = require('../errors');
-const User = require('../structures/User');
+const { makeURLSearchParams } = require('@discordjs/rest');
+const { ReactionType, Routes } = require('discord-api-types/v10');
+const { CachedManager } = require('./CachedManager');
+const { DiscordjsError, ErrorCodes } = require('../errors');
+const { User } = require('../structures/User');
 
 /**
  * Manages API methods for users who reacted to a reaction and stores their cache.
@@ -30,6 +31,7 @@ class ReactionUserManager extends CachedManager {
   /**
    * Options used to fetch users who gave a reaction.
    * @typedef {Object} FetchReactionUsersOptions
+   * @property {ReactionType} [type=ReactionType.Normal] The reaction type to fetch
    * @property {number} [limit=100] The maximum amount of users to fetch, defaults to `100`
    * @property {Snowflake} [after] Limit fetching users to those with an id greater than the supplied id
    */
@@ -39,12 +41,9 @@ class ReactionUserManager extends CachedManager {
    * @param {FetchReactionUsersOptions} [options] Options for fetching the users
    * @returns {Promise<Collection<Snowflake, User>>}
    */
-  async fetch({ limit = 100, after } = {}) {
+  async fetch({ type = ReactionType.Normal, limit = 100, after } = {}) {
     const message = this.reaction.message;
-    const query = new URLSearchParams({ limit });
-    if (after) {
-      query.set('after', after);
-    }
+    const query = makeURLSearchParams({ limit, after, type });
     const data = await this.client.rest.get(
       Routes.channelMessageReaction(message.channelId, message.id, this.reaction.emoji.identifier),
       { query },
@@ -65,7 +64,7 @@ class ReactionUserManager extends CachedManager {
    */
   async remove(user = this.client.user) {
     const userId = this.client.users.resolveId(user);
-    if (!userId) throw new Error('REACTION_RESOLVE_USER');
+    if (!userId) throw new DiscordjsError(ErrorCodes.ReactionResolveUser);
     const message = this.reaction.message;
     const route =
       userId === this.client.user.id
@@ -76,4 +75,4 @@ class ReactionUserManager extends CachedManager {
   }
 }
 
-module.exports = ReactionUserManager;
+exports.ReactionUserManager = ReactionUserManager;

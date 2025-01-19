@@ -1,12 +1,19 @@
 'use strict';
-const { GatewayIntentBits } = require('discord-api-types/v9');
-const BitField = require('./BitField');
+const { GatewayIntentBits } = require('discord-api-types/v10');
+const { BitField } = require('./BitField');
 
 /**
  * Data structure that makes it easy to calculate intents.
  * @extends {BitField}
  */
-class IntentsBitField extends BitField {}
+class IntentsBitField extends BitField {
+  /**
+   * Numeric WebSocket intents
+   * @type {GatewayIntentBits}
+   * @memberof IntentsBitField
+   */
+  static Flags = GatewayIntentBits;
+}
 
 /**
  * @name IntentsBitField
@@ -24,10 +31,4 @@ class IntentsBitField extends BitField {}
  * @typedef {string|number|IntentsBitField|IntentsResolvable[]} IntentsResolvable
  */
 
-/**
- * Numeric WebSocket intents
- * @type {GatewayIntentBits}
- */
-IntentsBitField.Flags = GatewayIntentBits;
-
-module.exports = IntentsBitField;
+exports.IntentsBitField = IntentsBitField;

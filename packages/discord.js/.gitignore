@@ -1,8 +1,8 @@
 # Packages
-node_modules/
+node_modules
 
 # Log files
-logs/
+logs
 *.log
 npm-debug.log*
 
@@ -15,11 +15,17 @@ pids
 .env
 test/auth.json
 test/auth.js
-docs/deploy/deploy_key
-docs/deploy/deploy_key.pub
-deploy/deploy_key
-deploy/deploy_key.pub
 
-# Dist
-dist/
-docs/docs.json
+# Docs
+docs/**/*
+!docs/index.json
+!docs/logo.svg
+!docs/README.md
+
+# Miscellaneous
+.turbo
+.tmp
+
+# Generated files
+typings/index.d.mts
+typings/rawDataTypes.d.mts

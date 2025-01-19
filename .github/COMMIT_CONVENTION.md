@@ -7,7 +7,7 @@
 Messages must be matched by the following regex:
 
 ```js
-/^(revert: )?(feat|fix|docs|style|refactor|perf|test|workflow|build|ci|chore|types|wip)(\(.+\))?: .{1,72}/;
+/^(revert: )?(feat|fix|docs|style|refactor|perf|test|build|ci|chore|types)(\(.+\))?!?: .{1,72}/;
 ```
 
 #### Examples
@@ -15,13 +15,13 @@ Messages must be matched by the following regex:
 Appears under "Features" header, `GuildMember` subheader:
 
 ```
-feat(guildmember): add 'tag' method
+feat(GuildMember): add 'tag' method
 ```
 
 Appears under "Bug Fixes" header, `Guild` subheader, with a link to issue #28:
 
 ```
-fix(guild): handle events correctly
+fix(Guild): handle events correctly
 
 close #28
 ```
@@ -37,7 +37,7 @@ BREAKING CHANGE: The 'bar' option has been removed.
 The following commit and commit `667ecc1` do not appear in the changelog if they are under the same release. If not, the revert commit appears under the "Reverts" header.
 
 ```
-revert: feat(managers): add Managers
+revert: feat(Managers): add Managers
 
 This reverts commit 667ecc1654a317a13331b17617d973392f415f02.
 ```
@@ -55,6 +55,7 @@ A commit message consists of a **header**, **body** and **footer**. The header h
 ```
 
 The **header** is mandatory and the **scope** of the header is optional.
+If the commit contains **Breaking Changes**, a `!` can be added before the `:` as an indicator.
 
 ### Revert
 

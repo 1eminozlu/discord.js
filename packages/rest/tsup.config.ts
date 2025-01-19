@@ -1,13 +1,18 @@
-import type { Options } from 'tsup';
+import { esbuildPluginVersionInjector } from 'esbuild-plugin-version-injector';
+import { createTsupConfig } from '../../tsup.config.js';
 
-export const tsup: Options = {
-	clean: true,
-	dts: false,
-	entryPoints: ['src/index.ts'],
-	format: ['esm', 'cjs'],
-	minify: true,
-	keepNames: true,
-	skipNodeModulesBundle: true,
-	sourcemap: true,
-	target: 'es2021',
-};
+export default [
+	createTsupConfig({
+		entry: ['src/index.ts'],
+		esbuildPlugins: [esbuildPluginVersionInjector()],
+	}),
+	createTsupConfig({
+		entry: ['src/web.ts'],
+		esbuildPlugins: [esbuildPluginVersionInjector()],
+	}),
+	createTsupConfig({
+		entry: ['src/strategies/*.ts'],
+		outDir: 'dist/strategies',
+		esbuildPlugins: [esbuildPluginVersionInjector()],
+	}),
+];

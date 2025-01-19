@@ -1,8 +1,9 @@
 'use strict';
 
 const { Collection } = require('@discordjs/collection');
-const Base = require('./Base');
-const WelcomeChannel = require('./WelcomeChannel');
+const { GuildFeature } = require('discord-api-types/v10');
+const { Base } = require('./Base');
+const { WelcomeChannel } = require('./WelcomeChannel');
 
 /**
  * Represents a welcome screen.
@@ -37,12 +38,12 @@ class WelcomeScreen extends Base {
   }
 
   /**
-   * Whether the welcome screen is enabled on the guild or not
+   * Whether the welcome screen is enabled on the guild
    * @type {boolean}
    */
   get enabled() {
-    return this.guild.features.includes('WELCOME_SCREEN_ENABLED');
+    return this.guild.features.includes(GuildFeature.WelcomeScreenEnabled);
   }
 }
 
-module.exports = WelcomeScreen;
+exports.WelcomeScreen = WelcomeScreen;

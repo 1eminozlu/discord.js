@@ -1,8 +1,8 @@
 'use strict';
 
-const { Routes } = require('discord-api-types/v9');
-const CachedManager = require('./CachedManager');
-const { TypeError, Error } = require('../errors');
+const { Routes } = require('discord-api-types/v10');
+const { CachedManager } = require('./CachedManager');
+const { DiscordjsTypeError, DiscordjsError, ErrorCodes } = require('../errors');
 const { StageInstance } = require('../structures/StageInstance');
 
 /**
@@ -30,7 +30,10 @@ class StageInstanceManager extends CachedManager {
    * Options used to create a stage instance.
    * @typedef {Object} StageInstanceCreateOptions
    * @property {string} topic The topic of the stage instance
-   * @property {PrivacyLevel|number} [privacyLevel] The privacy level of the stage instance
+   * @property {StageInstancePrivacyLevel} [privacyLevel] The privacy level of the stage instance
+   * @property {boolean} [sendStartNotification] Whether to notify `@everyone` that the stage instance has started
+   * @property {GuildScheduledEventResolvable} [guildScheduledEvent]
+   * The guild scheduled event associated with the stage instance
    */
 
   /**
@@ -56,15 +59,19 @@ class StageInstanceManager extends CachedManager {
    */
   async create(channel, options) {
     const channelId = this.guild.channels.resolveId(channel);
-    if (!channelId) throw new Error('STAGE_CHANNEL_RESOLVE');
-    if (typeof options !== 'object') throw new TypeError('INVALID_TYPE', 'options', 'object', true);
-    let { topic, privacyLevel } = options;
+    if (!channelId) throw new DiscordjsError(ErrorCodes.StageChannelResolve);
+    if (typeof options !== 'object') throw new DiscordjsTypeError(ErrorCodes.InvalidType, 'options', 'object', true);
+    const { guildScheduledEvent, topic, privacyLevel, sendStartNotification } = options;
+
+    const guildScheduledEventId = guildScheduledEvent && this.resolveId(guildScheduledEvent);
 
     const data = await this.client.rest.post(Routes.stageInstances(), {
       body: {
         channel_id: channelId,
         topic,
         privacy_level: privacyLevel,
+        send_start_notification: sendStartNotification,
+        guild_scheduled_event_id: guildScheduledEventId,
       },
     });
 
@@ -84,7 +91,7 @@ class StageInstanceManager extends CachedManager {
    */
   async fetch(channel, { cache = true, force = false } = {}) {
     const channelId = this.guild.channels.resolveId(channel);
-    if (!channelId) throw new Error('STAGE_CHANNEL_RESOLVE');
+    if (!channelId) throw new DiscordjsError(ErrorCodes.StageChannelResolve);
 
     if (!force) {
       const existing = this.cache.find(stageInstance => stageInstance.channelId === channelId);
@@ -99,7 +106,7 @@ class StageInstanceManager extends CachedManager {
    * Options used to edit an existing stage instance.
    * @typedef {Object} StageInstanceEditOptions
    * @property {string} [topic] The new topic of the stage instance
-   * @property {PrivacyLevel|number} [privacyLevel] The new privacy level of the stage instance
+   * @property {StageInstancePrivacyLevel} [privacyLevel] The new privacy level of the stage instance
    */
 
   /**
@@ -114,9 +121,9 @@ class StageInstanceManager extends CachedManager {
    *  .catch(console.error);
    */
   async edit(channel, options) {
-    if (typeof options !== 'object') throw new TypeError('INVALID_TYPE', 'options', 'object', true);
+    if (typeof options !== 'object') throw new DiscordjsTypeError(ErrorCodes.InvalidType, 'options', 'object', true);
     const channelId = this.guild.channels.resolveId(channel);
-    if (!channelId) throw new Error('STAGE_CHANNEL_RESOLVE');
+    if (!channelId) throw new DiscordjsError(ErrorCodes.StageChannelResolve);
 
     let { topic, privacyLevel } = options;
 
@@ -143,10 +150,10 @@ class StageInstanceManager extends CachedManager {
    */
   async delete(channel) {
     const channelId = this.guild.channels.resolveId(channel);
-    if (!channelId) throw new Error('STAGE_CHANNEL_RESOLVE');
+    if (!channelId) throw new DiscordjsError(ErrorCodes.StageChannelResolve);
 
     await this.client.rest.delete(Routes.stageInstance(channelId));
   }
 }
 
-module.exports = StageInstanceManager;
+exports.StageInstanceManager = StageInstanceManager;

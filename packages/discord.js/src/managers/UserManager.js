@@ -1,11 +1,12 @@
 'use strict';
 
-const { ChannelType, Routes } = require('discord-api-types/v9');
-const CachedManager = require('./CachedManager');
+const { ChannelType, Routes } = require('discord-api-types/v10');
+const { CachedManager } = require('./CachedManager');
+const { DiscordjsError, ErrorCodes } = require('../errors');
 const { GuildMember } = require('../structures/GuildMember');
 const { Message } = require('../structures/Message');
-const ThreadMember = require('../structures/ThreadMember');
-const User = require('../structures/User');
+const { ThreadMember } = require('../structures/ThreadMember');
+const { User } = require('../structures/User');
 
 /**
  * Manages API methods for users and stores their cache.
@@ -39,7 +40,10 @@ class UserManager extends CachedManager {
    * @private
    */
   dmChannel(userId) {
-    return this.client.channels.cache.find(c => c.type === ChannelType.DM && c.recipient.id === userId) ?? null;
+    return (
+      this.client.channels.cache.find(channel => channel.type === ChannelType.DM && channel.recipientId === userId) ??
+      null
+    );
   }
 
   /**
@@ -68,7 +72,7 @@ class UserManager extends CachedManager {
   async deleteDM(user) {
     const id = this.resolveId(user);
     const dmChannel = this.dmChannel(id);
-    if (!dmChannel) throw new Error('USER_NO_DM_CHANNEL');
+    if (!dmChannel) throw new DiscordjsError(ErrorCodes.UserNoDMChannel);
     await this.client.rest.delete(Routes.channel(dmChannel.id));
     this.client.channels._remove(dmChannel.id);
     return dmChannel;
@@ -92,19 +96,9 @@ class UserManager extends CachedManager {
   }
 
   /**
-   * Fetches a user's flags.
-   * @param {UserResolvable} user The UserResolvable to identify
-   * @param {BaseFetchOptions} [options] Additional options for this fetch
-   * @returns {Promise<UserFlagsBitField>}
-   */
-  async fetchFlags(user, options) {
-    return (await this.fetch(user, options)).flags;
-  }
-
-  /**
    * Sends a message to a user.
    * @param {UserResolvable} user The UserResolvable to identify
-   * @param {string|MessagePayload|MessageOptions} options The options to provide
+   * @param {string|MessagePayload|MessageCreateOptions} options The options to provide
    * @returns {Promise<Message>}
    */
   async send(user, options) {
@@ -135,4 +129,4 @@ class UserManager extends CachedManager {
   }
 }
 
-module.exports = UserManager;
+exports.UserManager = UserManager;

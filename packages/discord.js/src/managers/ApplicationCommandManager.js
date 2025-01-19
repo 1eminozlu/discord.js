@@ -1,11 +1,14 @@
 'use strict';
 
 const { Collection } = require('@discordjs/collection');
-const { Routes } = require('discord-api-types/v9');
-const ApplicationCommandPermissionsManager = require('./ApplicationCommandPermissionsManager');
-const CachedManager = require('./CachedManager');
-const { TypeError } = require('../errors');
-const ApplicationCommand = require('../structures/ApplicationCommand');
+const { makeURLSearchParams } = require('@discordjs/rest');
+const { isJSONEncodable } = require('@discordjs/util');
+const { Routes } = require('discord-api-types/v10');
+const { ApplicationCommandPermissionsManager } = require('./ApplicationCommandPermissionsManager');
+const { CachedManager } = require('./CachedManager');
+const { DiscordjsTypeError, ErrorCodes } = require('../errors');
+const { ApplicationCommand } = require('../structures/ApplicationCommand');
+const { PermissionsBitField } = require('../util/PermissionsBitField');
 
 /**
  * Manages API methods for application commands and stores their cache.
@@ -64,6 +67,11 @@ class ApplicationCommandManager extends CachedManager {
    */
 
   /**
+   * Data that resolves to the data of an ApplicationCommand
+   * @typedef {ApplicationCommandData|APIApplicationCommand} ApplicationCommandDataResolvable
+   */
+
+  /**
    * Options used to fetch data from Discord
    * @typedef {Object} BaseFetchOptions
    * @property {boolean} [cache=true] Whether to cache the fetched data if it wasn't already
@@ -74,11 +82,13 @@ class ApplicationCommandManager extends CachedManager {
    * Options used to fetch Application Commands from Discord
    * @typedef {BaseFetchOptions} FetchApplicationCommandOptions
    * @property {Snowflake} [guildId] The guild's id to fetch commands for, for when the guild is not cached
+   * @property {Locale} [locale] The locale to use when fetching this command
+   * @property {boolean} [withLocalizations] Whether to fetch all localization data
    */
 
   /**
    * Obtains one or multiple application commands from Discord, or the cache if it's already available.
-   * @param {Snowflake} [id] The application command's id
+   * @param {Snowflake|FetchApplicationCommandOptions} [id] Options for fetching application command(s)
    * @param {FetchApplicationCommandOptions} [options] Additional options for this fetch
    * @returns {Promise<ApplicationCommand|Collection<Snowflake, ApplicationCommand>>}
    * @example
@@ -92,9 +102,9 @@ class ApplicationCommandManager extends CachedManager {
    *   .then(commands => console.log(`Fetched ${commands.size} commands`))
    *   .catch(console.error);
    */
-  async fetch(id, { guildId, cache = true, force = false } = {}) {
+  async fetch(id, { guildId, cache = true, force = false, locale, withLocalizations } = {}) {
     if (typeof id === 'object') {
-      ({ guildId, cache = true } = id);
+      ({ guildId, cache = true, locale, withLocalizations } = id);
     } else if (id) {
       if (!force) {
         const existing = this.cache.get(id);
@@ -104,13 +114,18 @@ class ApplicationCommandManager extends CachedManager {
       return this._add(command, cache);
     }
 
-    const data = await this.client.rest.get(this.commandPath({ guildId }));
+    const data = await this.client.rest.get(this.commandPath({ guildId }), {
+      headers: {
+        'X-Discord-Locale': locale,
+      },
+      query: makeURLSearchParams({ with_localizations: withLocalizations }),
+    });
     return data.reduce((coll, command) => coll.set(command.id, this._add(command, cache, guildId)), new Collection());
   }
 
   /**
    * Creates an application command.
-   * @param {ApplicationCommandData|APIApplicationCommand} command The command
+   * @param {ApplicationCommandDataResolvable} command The command
    * @param {Snowflake} [guildId] The guild's id to create this command in,
    * ignored when using a {@link GuildApplicationCommandManager}
    * @returns {Promise<ApplicationCommand>}
@@ -132,7 +147,7 @@ class ApplicationCommandManager extends CachedManager {
 
   /**
    * Sets all the commands for this application or guild.
-   * @param {ApplicationCommandData[]|APIApplicationCommand[]} commands The commands
+   * @param {ApplicationCommandDataResolvable[]} commands The commands
    * @param {Snowflake} [guildId] The guild's id to create the commands in,
    * ignored when using a {@link GuildApplicationCommandManager}
    * @returns {Promise<Collection<Snowflake, ApplicationCommand>>}
@@ -154,15 +169,18 @@ class ApplicationCommandManager extends CachedManager {
    */
   async set(commands, guildId) {
     const data = await this.client.rest.put(this.commandPath({ guildId }), {
-      body: commands.map(c => this.constructor.transformCommand(c)),
+      body: commands.map(command => this.constructor.transformCommand(command)),
     });
-    return data.reduce((coll, command) => coll.set(command.id, this._add(command, true, guildId)), new Collection());
+    return data.reduce(
+      (collection, command) => collection.set(command.id, this._add(command, true, guildId)),
+      new Collection(),
+    );
   }
 
   /**
    * Edits an application command.
    * @param {ApplicationCommandResolvable} command The command to edit
-   * @param {ApplicationCommandData|APIApplicationCommand} data The data to update the command with
+   * @param {Partial<ApplicationCommandDataResolvable>} data The data to update the command with
    * @param {Snowflake} [guildId] The guild's id where the command registered,
    * ignored when using a {@link GuildApplicationCommandManager}
    * @returns {Promise<ApplicationCommand>}
@@ -176,7 +194,7 @@ class ApplicationCommandManager extends CachedManager {
    */
   async edit(command, data, guildId) {
     const id = this.resolveId(command);
-    if (!id) throw new TypeError('INVALID_TYPE', 'command', 'ApplicationCommandResolvable');
+    if (!id) throw new DiscordjsTypeError(ErrorCodes.InvalidType, 'command', 'ApplicationCommandResolvable');
 
     const patched = await this.client.rest.patch(this.commandPath({ id, guildId }), {
       body: this.constructor.transformCommand(data),
@@ -198,7 +216,7 @@ class ApplicationCommandManager extends CachedManager {
    */
   async delete(command, guildId) {
     const id = this.resolveId(command);
-    if (!id) throw new TypeError('INVALID_TYPE', 'command', 'ApplicationCommandResolvable');
+    if (!id) throw new DiscordjsTypeError(ErrorCodes.InvalidType, 'command', 'ApplicationCommandResolvable');
 
     await this.client.rest.delete(this.commandPath({ id, guildId }));
 
@@ -209,19 +227,41 @@ class ApplicationCommandManager extends CachedManager {
 
   /**
    * Transforms an {@link ApplicationCommandData} object into something that can be used with the API.
-   * @param {ApplicationCommandData|APIApplicationCommand} command The command to transform
+   * @param {ApplicationCommandDataResolvable} command The command to transform
    * @returns {APIApplicationCommand}
    * @private
    */
   static transformCommand(command) {
+    if (isJSONEncodable(command)) return command.toJSON();
+
+    let default_member_permissions;
+
+    if ('default_member_permissions' in command) {
+      default_member_permissions = command.default_member_permissions
+        ? new PermissionsBitField(BigInt(command.default_member_permissions)).bitfield.toString()
+        : command.default_member_permissions;
+    }
+
+    if ('defaultMemberPermissions' in command) {
+      default_member_permissions =
+        command.defaultMemberPermissions !== null
+          ? new PermissionsBitField(command.defaultMemberPermissions).bitfield.toString()
+          : command.defaultMemberPermissions;
+    }
+
     return {
       name: command.name,
+      name_localizations: command.nameLocalizations ?? command.name_localizations,
       description: command.description,
+      nsfw: command.nsfw,
+      description_localizations: command.descriptionLocalizations ?? command.description_localizations,
       type: command.type,
-      options: command.options?.map(o => ApplicationCommand.transformOption(o)),
-      default_permission: command.defaultPermission ?? command.default_permission,
+      options: command.options?.map(option => ApplicationCommand.transformOption(option)),
+      default_member_permissions,
+      integration_types: command.integrationTypes ?? command.integration_types,
+      contexts: command.contexts,
     };
   }
 }
 
-module.exports = ApplicationCommandManager;
+exports.ApplicationCommandManager = ApplicationCommandManager;

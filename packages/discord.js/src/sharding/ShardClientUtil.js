@@ -1,13 +1,15 @@
 'use strict';
 
 const process = require('node:process');
-const { Error } = require('../errors');
-const { Events } = require('../util/Constants');
-const Util = require('../util/Util');
+const { calculateShardId } = require('@discordjs/util');
+const { WebSocketShardEvents } = require('@discordjs/ws');
+const { DiscordjsError, DiscordjsTypeError, ErrorCodes } = require('../errors');
+const { Events } = require('../util/Events');
+const { makeError, makePlainError } = require('../util/Util');
 
 /**
  * Helper class for sharded clients spawned as a child process/worker, such as from a {@link ShardingManager}.
- * Utilises IPC to send and receive data to/from the master process and other shards.
+ * Utilizes IPC to send and receive data to/from the master process and other shards.
  */
 class ShardClientUtil {
   constructor(client, mode) {
@@ -29,48 +31,33 @@ class ShardClientUtil {
      */
     this.parentPort = null;
 
-    if (mode === 'process') {
-      process.on('message', this._handleMessage.bind(this));
-      client.on('ready', () => {
-        process.send({ _ready: true });
-      });
-      client.on('disconnect', () => {
-        process.send({ _disconnect: true });
-      });
-      client.on('reconnecting', () => {
-        process.send({ _reconnecting: true });
-      });
-    } else if (mode === 'worker') {
-      this.parentPort = require('node:worker_threads').parentPort;
-      this.parentPort.on('message', this._handleMessage.bind(this));
-      client.on('ready', () => {
-        this.parentPort.postMessage({ _ready: true });
-      });
-      client.on('disconnect', () => {
-        this.parentPort.postMessage({ _disconnect: true });
-      });
-      client.on('reconnecting', () => {
-        this.parentPort.postMessage({ _reconnecting: true });
-      });
+    switch (mode) {
+      case 'process':
+        process.on('message', this._handleMessage.bind(this));
+        client.on(Events.ClientReady, () => {
+          process.send({ _ready: true });
+        });
+        client.ws.on(WebSocketShardEvents.Closed, () => {
+          process.send({ _disconnect: true });
+        });
+        client.ws.on(WebSocketShardEvents.Resumed, () => {
+          process.send({ _resume: true });
+        });
+        break;
+      case 'worker':
+        this.parentPort = require('node:worker_threads').parentPort;
+        this.parentPort.on('message', this._handleMessage.bind(this));
+        client.on(Events.ClientReady, () => {
+          this.parentPort.postMessage({ _ready: true });
+        });
+        client.ws.on(WebSocketShardEvents.Closed, () => {
+          this.parentPort.postMessage({ _disconnect: true });
+        });
+        client.ws.on(WebSocketShardEvents.Resumed, () => {
+          this.parentPort.postMessage({ _resume: true });
+        });
+        break;
     }
-  }
-
-  /**
-   * Array of shard ids of this client
-   * @type {number[]}
-   * @readonly
-   */
-  get ids() {
-    return this.client.options.shards;
-  }
-
-  /**
-   * Total number of shards
-   * @type {number}
-   * @readonly
-   */
-  get count() {
-    return this.client.options.shardCount;
   }
 
   /**
@@ -81,14 +68,17 @@ class ShardClientUtil {
    */
   send(message) {
     return new Promise((resolve, reject) => {
-      if (this.mode === 'process') {
-        process.send(message, err => {
-          if (err) reject(err);
-          else resolve();
-        });
-      } else if (this.mode === 'worker') {
-        this.parentPort.postMessage(message);
-        resolve();
+      switch (this.mode) {
+        case 'process':
+          process.send(message, err => {
+            if (err) reject(err);
+            else resolve();
+          });
+          break;
+        case 'worker':
+          this.parentPort.postMessage(message);
+          resolve();
+          break;
       }
     });
   }
@@ -113,7 +103,7 @@ class ShardClientUtil {
         parent.removeListener('message', listener);
         this.decrementMaxListeners(parent);
         if (!message._error) resolve(message._result);
-        else reject(Util.makeError(message._error));
+        else reject(makeError(message._error));
       };
       this.incrementMaxListeners(parent);
       parent.on('message', listener);
@@ -141,7 +131,7 @@ class ShardClientUtil {
     return new Promise((resolve, reject) => {
       const parent = this.parentPort ?? process;
       if (typeof script !== 'function') {
-        reject(new TypeError('SHARDING_INVALID_EVAL_BROADCAST'));
+        reject(new DiscordjsTypeError(ErrorCodes.ShardingInvalidEvalBroadcast));
         return;
       }
       script = `(${script})(this, ${JSON.stringify(options.context)})`;
@@ -151,7 +141,7 @@ class ShardClientUtil {
         parent.removeListener('message', listener);
         this.decrementMaxListeners(parent);
         if (!message._error) resolve(message._result);
-        else reject(Util.makeError(message._error));
+        else reject(makeError(message._error));
       };
       this.incrementMaxListeners(parent);
       parent.on('message', listener);
@@ -187,13 +177,13 @@ class ShardClientUtil {
         for (const prop of props) value = value[prop];
         this._respond('fetchProp', { _fetchProp: message._fetchProp, _result: value });
       } catch (err) {
-        this._respond('fetchProp', { _fetchProp: message._fetchProp, _error: Util.makePlainError(err) });
+        this._respond('fetchProp', { _fetchProp: message._fetchProp, _error: makePlainError(err) });
       }
     } else if (message._eval) {
       try {
         this._respond('eval', { _eval: message._eval, _result: await this.client._eval(message._eval) });
       } catch (err) {
-        this._respond('eval', { _eval: message._eval, _error: Util.makePlainError(err) });
+        this._respond('eval', { _eval: message._eval, _error: makePlainError(err) });
       }
     }
   }
@@ -216,7 +206,7 @@ class ShardClientUtil {
        * @event Client#error
        * @param {Error} error The error encountered
        */
-      this.client.emit(Events.ERROR, error);
+      this.client.emit(Events.Error, error);
     });
   }
 
@@ -231,7 +221,7 @@ class ShardClientUtil {
       this._singleton = new this(client, mode);
     } else {
       client.emit(
-        Events.WARN,
+        Events.Warn,
         'Multiple clients created in child process/worker; only the first will handle sharding helpers.',
       );
     }
@@ -245,8 +235,8 @@ class ShardClientUtil {
    * @returns {number}
    */
   static shardIdForGuildId(guildId, shardCount) {
-    const shard = Number(BigInt(guildId) >> 22n) % shardCount;
-    if (shard < 0) throw new Error('SHARDING_SHARD_MISCALCULATION', shard, guildId, shardCount);
+    const shard = calculateShardId(guildId, shardCount);
+    if (shard < 0) throw new DiscordjsError(ErrorCodes.ShardingShardMiscalculation, shard, guildId, shardCount);
     return shard;
   }
 
@@ -275,4 +265,4 @@ class ShardClientUtil {
   }
 }
 
-module.exports = ShardClientUtil;
+exports.ShardClientUtil = ShardClientUtil;

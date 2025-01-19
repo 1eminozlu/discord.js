@@ -1,8 +1,8 @@
 'use strict';
 
-const { Routes } = require('discord-api-types/v9');
-const Base = require('./Base');
-const IntegrationApplication = require('./IntegrationApplication');
+const { Routes } = require('discord-api-types/v10');
+const { Base } = require('./Base');
+const { IntegrationApplication } = require('./IntegrationApplication');
 
 /**
  * The information account for an integration
@@ -16,11 +16,13 @@ const IntegrationApplication = require('./IntegrationApplication');
  * * `twitch`
  * * `youtube`
  * * `discord`
+ * * `guild_subscription`
  * @typedef {string} IntegrationType
  */
 
 /**
- *  Represents a guild integration.
+ * Represents a guild integration.
+ * @extends {Base}
  */
 class Integration extends Base {
   constructor(client, data, guild) {
@@ -52,9 +54,9 @@ class Integration extends Base {
 
     /**
      * Whether this integration is enabled
-     * @type {boolean}
+     * @type {?boolean}
      */
-    this.enabled = data.enabled;
+    this.enabled = data.enabled ?? null;
 
     if ('syncing' in data) {
       /**
@@ -184,6 +186,16 @@ class Integration extends Base {
     } else {
       this.application ??= null;
     }
+
+    if ('scopes' in data) {
+      /**
+       * The scopes this application has been authorized for
+       * @type {OAuth2Scopes[]}
+       */
+      this.scopes = data.scopes;
+    } else {
+      this.scopes ??= [];
+    }
   }
 
   /**
@@ -205,4 +217,4 @@ class Integration extends Base {
   }
 }
 
-module.exports = Integration;
+exports.Integration = Integration;

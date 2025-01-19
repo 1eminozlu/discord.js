@@ -1,11 +1,12 @@
 'use strict';
 
-const { ChannelType, Routes } = require('discord-api-types/v9');
-const Base = require('./Base');
-const { Error, TypeError } = require('../errors');
+const { ChannelType, Routes } = require('discord-api-types/v10');
+const { Base } = require('./Base');
+const { DiscordjsError, DiscordjsTypeError, ErrorCodes } = require('../errors');
 
 /**
  * Represents the voice state for a Guild Member.
+ * @extends {Base}
  */
 class VoiceState extends Base {
   constructor(guild, data) {
@@ -121,7 +122,7 @@ class VoiceState extends Base {
        * The time at which the member requested to speak. This property is specific to stage channels only.
        * @type {?number}
        */
-      this.requestToSpeakTimestamp = Date.parse(data.request_to_speak_timestamp);
+      this.requestToSpeakTimestamp = data.request_to_speak_timestamp && Date.parse(data.request_to_speak_timestamp);
     } else {
       this.requestToSpeakTimestamp ??= null;
     }
@@ -172,7 +173,7 @@ class VoiceState extends Base {
    * @returns {Promise<GuildMember>}
    */
   setMute(mute = true, reason) {
-    return this.guild.members.edit(this.id, { mute }, reason);
+    return this.guild.members.edit(this.id, { mute, reason });
   }
 
   /**
@@ -182,7 +183,7 @@ class VoiceState extends Base {
    * @returns {Promise<GuildMember>}
    */
   setDeaf(deaf = true, reason) {
-    return this.guild.members.edit(this.id, { deaf }, reason);
+    return this.guild.members.edit(this.id, { deaf, reason });
   }
 
   /**
@@ -196,38 +197,82 @@ class VoiceState extends Base {
 
   /**
    * Moves the member to a different channel, or disconnects them from the one they're in.
-   * @param {GuildVoiceChannelResolvable|null} channel Channel to move the member to, or `null` if you want to
+   * @param {?GuildVoiceChannelResolvable} channel Channel to move the member to, or `null` if you want to
    * disconnect them from voice.
    * @param {string} [reason] Reason for moving member to another channel or disconnecting
    * @returns {Promise<GuildMember>}
    */
   setChannel(channel, reason) {
-    return this.guild.members.edit(this.id, { channel }, reason);
+    return this.guild.members.edit(this.id, { channel, reason });
+  }
+
+  /**
+   * Data to edit the logged in user's own voice state with, when in a stage channel
+   * @typedef {Object} VoiceStateEditOptions
+   * @property {boolean} [requestToSpeak] Whether or not the client is requesting to become a speaker.
+   * <info>Only available to the logged in user's own voice state.</info>
+   * @property {boolean} [suppressed] Whether or not the user should be suppressed.
+   */
+
+  /**
+   * Edits this voice state. Currently only available when in a stage channel
+   * @param {VoiceStateEditOptions} options The options to provide
+   * @returns {Promise<VoiceState>}
+   */
+  async edit(options) {
+    if (this.channel?.type !== ChannelType.GuildStageVoice) throw new DiscordjsError(ErrorCodes.VoiceNotStageChannel);
+
+    const target = this.client.user.id === this.id ? '@me' : this.id;
+
+    if (target !== '@me' && options.requestToSpeak !== undefined) {
+      throw new DiscordjsError(ErrorCodes.VoiceStateNotOwn);
+    }
+
+    if (!['boolean', 'undefined'].includes(typeof options.requestToSpeak)) {
+      throw new DiscordjsTypeError(ErrorCodes.VoiceStateInvalidType, 'requestToSpeak');
+    }
+
+    if (!['boolean', 'undefined'].includes(typeof options.suppressed)) {
+      throw new DiscordjsTypeError(ErrorCodes.VoiceStateInvalidType, 'suppressed');
+    }
+
+    await this.client.rest.patch(Routes.guildVoiceState(this.guild.id, target), {
+      body: {
+        channel_id: this.channelId,
+        request_to_speak_timestamp: options.requestToSpeak
+          ? new Date().toISOString()
+          : options.requestToSpeak === false
+            ? null
+            : undefined,
+        suppress: options.suppressed,
+      },
+    });
+    return this;
+  }
+
+  /**
+   * Fetches this voice state.
+   * @param {boolean} [force=true] Whether to skip the cache check and request the API
+   * @returns {Promise<VoiceState>}
+   */
+  fetch(force = true) {
+    return this.guild.voiceStates.fetch(this.id, { force });
   }
 
   /**
    * Toggles the request to speak in the channel.
    * Only applicable for stage channels and for the client's own voice state.
-   * @param {boolean} [request=true] Whether or not the client is requesting to become a speaker.
+   * @param {boolean} [requestToSpeak=true] Whether or not the client is requesting to become a speaker.
    * @example
    * // Making the client request to speak in a stage channel (raise its hand)
-   * guild.me.voice.setRequestToSpeak(true);
+   * guild.members.me.voice.setRequestToSpeak(true);
    * @example
    * // Making the client cancel a request to speak
-   * guild.me.voice.setRequestToSpeak(false);
-   * @returns {Promise<void>}
+   * guild.members.me.voice.setRequestToSpeak(false);
+   * @returns {Promise<VoiceState>}
    */
-  async setRequestToSpeak(request = true) {
-    if (this.channel?.type !== ChannelType.GuildStageVoice) throw new Error('VOICE_NOT_STAGE_CHANNEL');
-
-    if (this.client.user.id !== this.id) throw new Error('VOICE_STATE_NOT_OWN');
-
-    await this.client.rest.patch(Routes.guildVoiceState(this.guild.id), {
-      body: {
-        channel_id: this.channelId,
-        request_to_speak_timestamp: request ? new Date().toISOString() : null,
-      },
-    });
+  setRequestToSpeak(requestToSpeak = true) {
+    return this.edit({ requestToSpeak });
   }
 
   /**
@@ -235,31 +280,20 @@ class VoiceState extends Base {
    * @param {boolean} [suppressed=true] Whether or not the user should be suppressed.
    * @example
    * // Making the client a speaker
-   * guild.me.voice.setSuppressed(false);
+   * guild.members.me.voice.setSuppressed(false);
    * @example
    * // Making the client an audience member
-   * guild.me.voice.setSuppressed(true);
+   * guild.members.me.voice.setSuppressed(true);
    * @example
    * // Inviting another user to speak
    * voiceState.setSuppressed(false);
    * @example
    * // Moving another user to the audience, or cancelling their invite to speak
    * voiceState.setSuppressed(true);
-   * @returns {Promise<void>}
+   * @returns {Promise<VoiceState>}
    */
-  async setSuppressed(suppressed = true) {
-    if (typeof suppressed !== 'boolean') throw new TypeError('VOICE_STATE_INVALID_TYPE', 'suppressed');
-
-    if (this.channel?.type !== ChannelType.GuildStageVoice) throw new Error('VOICE_NOT_STAGE_CHANNEL');
-
-    const target = this.client.user.id === this.id ? '@me' : this.id;
-
-    await this.client.rest.patch(Routes.guildVoiceState(this.guild.id, target), {
-      body: {
-        channel_id: this.channelId,
-        suppress: suppressed,
-      },
-    });
+  setSuppressed(suppressed = true) {
+    return this.edit({ suppressed });
   }
 
   toJSON() {
@@ -275,4 +309,4 @@ class VoiceState extends Base {
   }
 }
 
-module.exports = VoiceState;
+exports.VoiceState = VoiceState;

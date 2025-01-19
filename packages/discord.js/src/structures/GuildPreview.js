@@ -2,9 +2,9 @@
 
 const { Collection } = require('@discordjs/collection');
 const { DiscordSnowflake } = require('@sapphire/snowflake');
-const { Routes } = require('discord-api-types/v9');
-const Base = require('./Base');
-const GuildPreviewEmoji = require('./GuildPreviewEmoji');
+const { Routes } = require('discord-api-types/v10');
+const { Base } = require('./Base');
+const { GuildPreviewEmoji } = require('./GuildPreviewEmoji');
 const { Sticker } = require('./Sticker');
 
 /**
@@ -62,7 +62,7 @@ class GuildPreview extends Base {
     if ('features' in data) {
       /**
        * An array of enabled guild features
-       * @type {Features[]}
+       * @type {GuildFeature[]}
        */
       this.features = data.features;
     }
@@ -115,6 +115,7 @@ class GuildPreview extends Base {
       new Collection(),
     );
   }
+
   /**
    * The timestamp this guild was created at
    * @type {number}
@@ -189,4 +190,4 @@ class GuildPreview extends Base {
   }
 }
 
-module.exports = GuildPreview;
+exports.GuildPreview = GuildPreview;

@@ -1,14 +1,15 @@
 'use strict';
 
-const { InteractionResponseType, Routes } = require('discord-api-types/v9');
-const CommandInteractionOptionResolver = require('./CommandInteractionOptionResolver');
-const Interaction = require('./Interaction');
+const { InteractionResponseType, Routes } = require('discord-api-types/v10');
+const { BaseInteraction } = require('./BaseInteraction');
+const { CommandInteractionOptionResolver } = require('./CommandInteractionOptionResolver');
+const { DiscordjsError, ErrorCodes } = require('../errors');
 
 /**
  * Represents an autocomplete interaction.
- * @extends {Interaction}
+ * @extends {BaseInteraction}
  */
-class AutocompleteInteraction extends Interaction {
+class AutocompleteInteraction extends BaseInteraction {
   constructor(client, data) {
     super(client, data);
 
@@ -32,9 +33,15 @@ class AutocompleteInteraction extends Interaction {
 
     /**
      * The invoked application command's type
-     * @type {ApplicationCommandType.ChatInput}
+     * @type {ApplicationCommandType}
      */
     this.commandType = data.data.type;
+
+    /**
+     * The id of the guild the invoked application command is registered to
+     * @type {?Snowflake}
+     */
+    this.commandGuildId = data.data.guild_id ?? null;
 
     /**
      * Whether this interaction has already received a response
@@ -60,7 +67,7 @@ class AutocompleteInteraction extends Interaction {
 
   /**
    * Sends results for the autocomplete of this interaction.
-   * @param {ApplicationCommandOptionChoice[]} options The options for the autocomplete
+   * @param {ApplicationCommandOptionChoiceData[]} options The options for the autocomplete
    * @returns {Promise<void>}
    * @example
    * // respond to autocomplete interaction
@@ -70,17 +77,20 @@ class AutocompleteInteraction extends Interaction {
    *    value: 'option1',
    *  },
    * ])
-   *  .then(console.log)
+   *  .then(() => console.log('Successfully responded to the autocomplete interaction'))
    *  .catch(console.error);
    */
   async respond(options) {
-    if (this.responded) throw new Error('INTERACTION_ALREADY_REPLIED');
+    if (this.responded) throw new DiscordjsError(ErrorCodes.InteractionAlreadyReplied);
 
     await this.client.rest.post(Routes.interactionCallback(this.id, this.token), {
       body: {
         type: InteractionResponseType.ApplicationCommandAutocompleteResult,
         data: {
-          choices: options,
+          choices: options.map(({ nameLocalizations, ...option }) => ({
+            ...this.client.options.jsonTransformer(option),
+            name_localizations: nameLocalizations,
+          })),
         },
       },
       auth: false,
@@ -89,4 +99,4 @@ class AutocompleteInteraction extends Interaction {
   }
 }
 
-module.exports = AutocompleteInteraction;
+exports.AutocompleteInteraction = AutocompleteInteraction;
